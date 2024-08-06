@@ -17,6 +17,8 @@ import enum
 import itertools
 import logging
 import re
+import queue
+from pytype.tools.analyze_project.graph import draw_type_inference_graph
 from typing import Any, Dict, List, Optional, Tuple
 
 from pycnite import marshal as pyc_marshal
@@ -47,9 +49,11 @@ from pytype.pytd import slots
 from pytype.pytd import visitors
 from pytype.typegraph import cfg
 from pytype.typegraph import cfg_utils
+from pytype.debug import show_ordered_code
 
 
 log = logging.getLogger(__name__)
+opcode_queue = queue.Queue()
 
 
 @dataclasses.dataclass(eq=True, frozen=True)
@@ -531,6 +535,7 @@ class VirtualMachine:
     code, block_graph = blocks.process_code(code)
     if store_blockgraph:
       self.block_graph = block_graph
+    show_ordered_code(code)
     return code
 
   def run_bytecode(self, node, code, f_globals=None, f_locals=None):
@@ -613,6 +618,7 @@ class VirtualMachine:
     self.late_annotations = None  # prevent adding unresolvable annotations
     assert not self.frames, "Frames left over!"
     log.info("Final node: <%d>%s", node.id, node.name)
+    draw_type_inference_graph(opcode_queue)
     return node, f_globals.members
 
   def flatten_late_annotation(self, node, annot, f_globals):
@@ -651,6 +657,8 @@ class VirtualMachine:
       state, ret = vm_utils.call_binary_operator(
           state, name, x, y, report_errors=report_errors, ctx=self.ctx
       )
+    opcode_queue.put({"opcode": "BINARY_OP", "name": name, "x_id": f"v{x.bindings[0].variable.id}",
+                      "y_id": f"v{y.bindings[0].variable.id}", "ret_id": f"v{ret.id}"})
     self.trace_opcode(None, name, ret)
     return state.push(ret)
 
@@ -905,6 +913,7 @@ class VirtualMachine:
 
   def load_constant(self, state, op, raw_const):
     const = self.ctx.convert.constant_to_var(raw_const, node=state.node)
+    opcode_queue.put({"opcode": "LOAD_CONST", "value_id": f"v{const.id}", "raw_const": raw_const})
     self.trace_opcode(op, raw_const, const)
     return state.push(const)
 
@@ -1067,6 +1076,7 @@ class VirtualMachine:
     else:
       value = self._get_value_from_annotations(state, op, name, local, orig_val)
     state = state.forward_cfg_node(f"Store:{name}")
+    opcode_queue.put({"opcode": "STORE_NAME", "name": name, "value_id": f"v{value.id}"})
     state = self._store_value(state, name, value, local)
     self.trace_opcode(op, name, value)
     return state
@@ -1651,6 +1661,7 @@ class VirtualMachine:
     name = op.argval
     try:
       state, val = self.load_local(state, name)
+      opcode_queue.put({"opcode": "LOAD_NAME", "value_id": f"v{val.id}", "name": name})
     except KeyError:
       try:
         state, val = self.load_global(state, name)

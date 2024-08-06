@@ -2,6 +2,8 @@
 
 import logging
 import sys
+import shutil
+import traceback
 
 import importlab.environment
 import importlab.fs
@@ -17,11 +19,12 @@ from pytype.tools.analyze_project import config
 from pytype.tools.analyze_project import environment as analyze_project_env
 from pytype.tools.analyze_project import parse_args
 from pytype.tools.analyze_project import pytype_runner
+from pytype.vm import opcode_queue
 
 
 def main():
   parser = parse_args.make_parser()
-  args = parser.parse_args(sys.argv[1:])
+  args = parser.parse_args(['test.py'])
 
   if args.version:
     print(io.get_pytype_version())
@@ -84,4 +87,6 @@ def main():
 
 
 if __name__ == '__main__':
-  sys.exit(main())
+  status_code = main()
+  shutil.rmtree("/Users/fuyingbo/Desktop/pytype/pytype/tools/analyze_project/.pytype")
+  sys.exit(status_code)
