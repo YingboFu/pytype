@@ -1,6 +1,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 
+
 def clean_edges(edges):
     ret = []
     for u, v in edges:
@@ -9,16 +10,22 @@ def clean_edges(edges):
         ret.append([u, v])
     return ret
 
-def draw_type_inference_graph(opcode_queue):
+
+def _store_fast(opcode_list, element, edges):
+    for i in range(opcode_list.index(element) - 1, -1, -1):
+        if (opcode_list[i]['opcode'] == 'LOAD_CONST' or opcode_list[i]['opcode'] == 'LOAD_FAST' or
+                opcode_list[i]['opcode'] == 'LOAD_NAME') and opcode_list[i]['value_data'] == element['value_data']:
+            for edge in edges:
+                if edge[1] == opcode_list[i]['value_id']:
+                    edge[1] = element['name']
+            break
+
+
+def draw_type_inference_graph(opcode_list):
     edges = []
-    while not opcode_queue.empty():
-        element = opcode_queue.get()
+    for element in opcode_list:
         if element['opcode'] == 'LOAD_CONST':
             edges.append([element['raw_const'], element['value_id']])
-        elif element['opcode'] == 'STORE_NAME':
-            for edge in edges:
-                if edge[1] == element['value_id']:
-                    edge[1] = element['name']
         elif element['opcode'] == 'LOAD_NAME':
             edges.append([element['name'], element['value_id']])
         elif element['opcode'] == 'BINARY_OP':
@@ -30,6 +37,10 @@ def draw_type_inference_graph(opcode_queue):
             for edge in edges:
                 if edge[1] == element['value_id']:
                     edge[1] = element['name']
+            _store_fast(opcode_list, element, edges)
+        elif element['opcode'] == 'LOAD_FAST':
+            _store_fast(opcode_list, element, edges)
+            edges.append([element['name'], element['value_id']])
 
     edges_clean = clean_edges(edges)
 

@@ -3,7 +3,6 @@
 import logging
 import sys
 import shutil
-import traceback
 
 import importlab.environment
 import importlab.fs
@@ -19,7 +18,6 @@ from pytype.tools.analyze_project import config
 from pytype.tools.analyze_project import environment as analyze_project_env
 from pytype.tools.analyze_project import parse_args
 from pytype.tools.analyze_project import pytype_runner
-from pytype.vm import opcode_queue
 
 
 def main():

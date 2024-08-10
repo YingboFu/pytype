@@ -17,7 +17,6 @@ import enum
 import itertools
 import logging
 import re
-import queue
 from pytype.tools.analyze_project.graph import draw_type_inference_graph
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -50,10 +49,11 @@ from pytype.pytd import visitors
 from pytype.typegraph import cfg
 from pytype.typegraph import cfg_utils
 from pytype.debug import show_ordered_code
+from pytype.blocks.blocks import OrderedCode
 
 
 log = logging.getLogger(__name__)
-opcode_queue = queue.Queue()
+opcode_list = []
 
 
 @dataclasses.dataclass(eq=True, frozen=True)
@@ -618,7 +618,7 @@ class VirtualMachine:
     self.late_annotations = None  # prevent adding unresolvable annotations
     assert not self.frames, "Frames left over!"
     log.info("Final node: <%d>%s", node.id, node.name)
-    draw_type_inference_graph(opcode_queue)
+    draw_type_inference_graph(opcode_list)
     return node, f_globals.members
 
   def flatten_late_annotation(self, node, annot, f_globals):
@@ -657,8 +657,8 @@ class VirtualMachine:
       state, ret = vm_utils.call_binary_operator(
           state, name, x, y, report_errors=report_errors, ctx=self.ctx
       )
-    opcode_queue.put({"opcode": "BINARY_OP", "name": name, "x_id": f"v{x.bindings[0].variable.id}",
-                      "y_id": f"v{y.bindings[0].variable.id}", "ret_id": f"v{ret.id}"})
+    opcode_list.append({"opcode": "BINARY_OP", "name": name, "x_id": f"v{x.bindings[0].variable.id}",
+                        "y_id": f"v{y.bindings[0].variable.id}", "ret_id": f"v{ret.id}"})
     self.trace_opcode(None, name, ret)
     return state.push(ret)
 
@@ -913,7 +913,9 @@ class VirtualMachine:
 
   def load_constant(self, state, op, raw_const):
     const = self.ctx.convert.constant_to_var(raw_const, node=state.node)
-    opcode_queue.put({"opcode": "LOAD_CONST", "value_id": f"v{const.id}", "raw_const": raw_const})
+    if isinstance(raw_const, OrderedCode):
+      show_ordered_code(raw_const)
+    opcode_list.append({"opcode": "LOAD_CONST", "value_id": f"v{const.id}", "value_data": const.data, "raw_const": raw_const})
     self.trace_opcode(op, raw_const, const)
     return state.push(const)
 
@@ -1076,7 +1078,7 @@ class VirtualMachine:
     else:
       value = self._get_value_from_annotations(state, op, name, local, orig_val)
     state = state.forward_cfg_node(f"Store:{name}")
-    opcode_queue.put({"opcode": "STORE_NAME", "name": name, "value_id": f"v{value.id}"})
+    opcode_list.append({"opcode": "STORE_NAME", "name": name, "value_id": f"v{value.id}", "value_data": value.data})
     state = self._store_value(state, name, value, local)
     self.trace_opcode(op, name, value)
     return state
@@ -1661,7 +1663,7 @@ class VirtualMachine:
     name = op.argval
     try:
       state, val = self.load_local(state, name)
-      opcode_queue.put({"opcode": "LOAD_NAME", "value_id": f"v{val.id}", "name": name})
+      opcode_list.append({"opcode": "LOAD_NAME", "value_id": f"v{val.id}", "value_data": val.data, "name": name})
     except KeyError:
       try:
         state, val = self.load_global(state, name)
@@ -1697,6 +1699,7 @@ class VirtualMachine:
     """Load a local. Unlike LOAD_NAME, it doesn't fall back to globals."""
     try:
       state, val = self.load_local(state, name)
+      opcode_list.append({"opcode": "LOAD_FAST", "value_id": f"v{val.id}", "value_data": val.data, "name": name})
     except KeyError:
       # Variables with a ".n" naming scheme are created by the interpreter under
       # the hood to store things like iterators for list comprehensions. Even if
