@@ -1612,6 +1612,7 @@ class VirtualMachine:
   def byte_LOAD_FOLDED_CONST(self, state, op):
     const = op.arg
     state, var = constant_folding.build_folded_type(self.ctx, state, const)
+    opcode_list.append({"opcode": "LOAD_FOLDED_CONST", "value_id": f"v{var.id}", "value_data": var.data, "raw_const": str(const)})
     return state.push(var)
 
   def byte_SETUP_EXCEPT_311(self, state, op):
@@ -2183,6 +2184,7 @@ class VirtualMachine:
 
   def store_subscr(self, state, obj, key, val):
     state, _ = self._call(state, obj, "__setitem__", (key, val))
+    opcode_list.append({"opcode": "STORE_SUBSCR", "obj_id": f"v{obj.id}", "key_id": f"v{key.id}", "value_id": f"v{val.id}"})
     return state
 
   def _record_annotation_dict_store(self, state, obj, subscr, val, op):

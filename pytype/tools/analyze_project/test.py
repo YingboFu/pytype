@@ -3,4 +3,6 @@ def foo(a, b):
     return ret
 
 
-y = foo(1, 3)
+a1 = 1
+b1 = 3
+y = foo(a1, b1)
