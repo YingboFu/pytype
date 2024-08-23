@@ -657,6 +657,8 @@ class VirtualMachine:
       state, ret = vm_utils.call_binary_operator(
           state, name, x, y, report_errors=report_errors, ctx=self.ctx
       )
+    print({"opcode": "BINARY_OP", "name": name, "x_id": f"v{x.bindings[0].variable.id}",
+                        "y_id": f"v{y.bindings[0].variable.id}", "ret_id": f"v{ret.id}"})
     opcode_list.append({"opcode": "BINARY_OP", "name": name, "x_id": f"v{x.bindings[0].variable.id}",
                         "y_id": f"v{y.bindings[0].variable.id}", "ret_id": f"v{ret.id}"})
     self.trace_opcode(None, name, ret)
@@ -717,6 +719,14 @@ class VirtualMachine:
         fallback_to_unsolvable,
         allow_never=True,
     )
+
+    # __setitem__(...) will be handled by STORE_SUBSCR, so we skip it here to avoid double handling
+    if len(funcv.data) != 1 or funcv.data[0].name != '__setitem__':
+        print({"opcode": "CALL", "funcv": funcv, "posargs": posargs, "namedargs": namedargs, "starargs":starargs,
+             "starstarargs": starstarargs, "ret": ret})
+        opcode_list.append({"opcode": "CALL", "funcv": funcv, "posargs": posargs, "namedargs": namedargs,
+                          "starargs": starargs, "starstarargs": starstarargs, "ret": ret})
+
     if ret.data == [self.ctx.convert.never]:
       state = state.set_why("Never")
     state = state.change_cfg_node(node)
@@ -915,6 +925,7 @@ class VirtualMachine:
     const = self.ctx.convert.constant_to_var(raw_const, node=state.node)
     if isinstance(raw_const, OrderedCode):
       show_ordered_code(raw_const)
+    print({"opcode": "LOAD_CONST", "value_id": f"v{const.id}", "value_data": const.data, "raw_const": raw_const})
     opcode_list.append({"opcode": "LOAD_CONST", "value_id": f"v{const.id}", "value_data": const.data, "raw_const": raw_const})
     self.trace_opcode(op, raw_const, const)
     return state.push(const)
@@ -1078,6 +1089,7 @@ class VirtualMachine:
     else:
       value = self._get_value_from_annotations(state, op, name, local, orig_val)
     state = state.forward_cfg_node(f"Store:{name}")
+    print({"opcode": "STORE_NAME", "name": name, "value_id": f"v{value.id}", "value_data": value.data})
     opcode_list.append({"opcode": "STORE_NAME", "name": name, "value_id": f"v{value.id}", "value_data": value.data})
     state = self._store_value(state, name, value, local)
     self.trace_opcode(op, name, value)
@@ -1700,6 +1712,7 @@ class VirtualMachine:
     """Load a local. Unlike LOAD_NAME, it doesn't fall back to globals."""
     try:
       state, val = self.load_local(state, name)
+      print({"opcode": "LOAD_FAST", "value_id": f"v{val.id}", "value_data": val.data, "name": name})
       opcode_list.append({"opcode": "LOAD_FAST", "value_id": f"v{val.id}", "value_data": val.data, "name": name})
     except KeyError:
       # Variables with a ".n" naming scheme are created by the interpreter under
@@ -1754,6 +1767,8 @@ class VirtualMachine:
       return self.load_constant(state, op, None)
     try:
       state, val = self.load_global(state, name)
+      print({"opcode": "LOAD_GLOBAL", "value_id": f"v{val.id}", "value_data": val.data, "name": name})
+      opcode_list.append({"opcode": "LOAD_GLOBAL", "value_id": f"v{val.id}", "value_data": val.data, "name": name})
     except KeyError:
       try:
         state, val = self.load_builtin(state, name)
@@ -2086,6 +2101,8 @@ class VirtualMachine:
       state = state.push(val)
     # We need to trace both the object and the attribute.
     self.trace_opcode(op, name, (obj, val))
+    print({"opcode": "LOAD_ATTR", "name": name, "obj_data": obj.data, "val_id": f"v{val.id}"})
+    opcode_list.append({"opcode": "LOAD_ATTR", "name": name, "obj_data": obj.data, "val_id": f"v{val.id}"})
     return state
 
   def _get_type_of_attr_to_store(self, node, op, obj, name):
@@ -2173,6 +2190,8 @@ class VirtualMachine:
     )
     state = state.forward_cfg_node(f"StoreAttr:{name}")
     state = self.store_attr(state, obj, name, val)
+    print({"opcode": "STORE_ATTR", "name": name, "obj_id": f"v{obj.id}", "val_id": f"v{val.id}"})
+    opcode_list.append({"opcode": "STORE_ATTR", "name": name, "obj_id": f"v{obj.id}", "val_id": f"v{val.id}"})
     # We need to trace both the object and the attribute.
     self.trace_opcode(op, name, (obj, val))
     return state
@@ -2184,6 +2203,7 @@ class VirtualMachine:
 
   def store_subscr(self, state, obj, key, val):
     state, _ = self._call(state, obj, "__setitem__", (key, val))
+    print({"opcode": "STORE_SUBSCR", "obj_id": f"v{obj.id}", "key_id": f"v{key.id}", "value_id": f"v{val.id}"})
     opcode_list.append({"opcode": "STORE_SUBSCR", "obj_id": f"v{obj.id}", "key_id": f"v{key.id}", "value_id": f"v{val.id}"})
     return state
 
@@ -2464,6 +2484,8 @@ class VirtualMachine:
     """Pops top-of-stack and uses it to update the dict at stack[op.arg]."""
     state, update = state.pop()
     target = state.peek(op.arg)
+    print({"opcode": "DICT_MERGE", "update_id": f"v{update.id}", "target_id": f"v{target.id}"})
+    opcode_list.append({"opcode": "DICT_MERGE", "update_id": f"v{update.id}", "target_id": f"v{target.id}"})
 
     def pytd_update(state):
       state, _ = self._call(state, target, "update", (update,))
@@ -3040,6 +3062,7 @@ class VirtualMachine:
 
   def byte_RETURN_VALUE(self, state, op):
     state, var = state.pop()
+    print({"opcode": "RETURN_VALUE", "var": var})
     return self._return_value(state, var)
 
   def byte_RETURN_CONST(self, state, op):
@@ -3320,6 +3343,8 @@ class VirtualMachine:
     name = op.argval
     state, self_obj = state.pop()
     state, method = self._load_method(state, self_obj, name)
+    print({"opcode": "LOAD_METHOD", "name": name, "obj_data": self_obj.data, "val_id": f"v{method.id}"})
+    opcode_list.append({"opcode": "LOAD_METHOD", "name": name, "obj_data": self_obj.data, "val_id": f"v{method.id}"})
     self.trace_opcode(op, name, (self_obj, method))
     return state
 

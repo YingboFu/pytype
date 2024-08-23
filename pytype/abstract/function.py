@@ -983,6 +983,7 @@ def call_function(
     one_result = None
     try:
       new_node, one_result = func.call(node, funcb, args)
+      # print(f"{new_node, one_result.data, node, funcb.data, args, type(func)}")
     except (error_types.DictKeyMissing, error_types.FailedFunctionCall) as e:
       if e > error and (
           (not strict_filter and len(func_var.bindings) == 1)
