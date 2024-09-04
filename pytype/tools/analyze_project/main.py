@@ -22,7 +22,9 @@ from pytype.tools.analyze_project import pytype_runner
 
 def main():
   parser = parse_args.make_parser()
-  args = parser.parse_args(['/Users/fuyingbo/Desktop/dataset/offu---WeRoBot/werobot/client.py'])
+  src1 = '/Users/fuyingbo/Desktop/dataset/offu---WeRoBot/werobot/client.py'
+  src2 = '/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/str_convert.py'
+  args = parser.parse_args([src2])
   if args.version:
     print(io.get_pytype_version())
     sys.exit(0)

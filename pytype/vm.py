@@ -719,7 +719,10 @@ class VirtualMachine:
     )
 
     # __setitem__(...) will be handled by STORE_SUBSCR, so we skip it here to avoid double handling
-    if len(funcv.data) != 1 or funcv.data[0].name != '__setitem__':
+    if funcv.data[0].name == 'append':
+      opcode_list.append({"opcode": "APPEND", "funcv": funcv, "posargs": posargs, "namedargs": namedargs,
+                          "starargs": starargs, "starstarargs": starstarargs, "ret": ret})
+    elif len(funcv.data) != 1 or funcv.data[0].name != '__setitem__':
         opcode_list.append({"opcode": "CALL", "funcv": funcv, "posargs": posargs, "namedargs": namedargs,
                           "starargs": starargs, "starstarargs": starstarargs, "ret": ret})
 
@@ -2349,6 +2352,7 @@ class VirtualMachine:
     )
     if len(values) > 1 and nondeterministic_iterable:
       self.ctx.errorlog.nondeterministic_unpacking(self.frames)
+    value_ids = []
     for value in reversed(values):
       if not value.bindings:
         # For something like
@@ -2357,7 +2361,9 @@ class VirtualMachine:
         # there are no bindings for j, so we have to add an empty binding
         # to avoid a name error on the print statement.
         value = self.ctx.convert.empty.to_variable(state.node)
+      value_ids.append(f'v{value.id}')
       state = state.push(value)
+    opcode_list.append({'opcode': 'UNPACK_SEQUENCE', 'seq_id': f'v{seq.id}', 'seq_data': seq.data, 'value_ids': value_ids})
     return state
 
   def byte_UNPACK_SEQUENCE(self, state, op):
@@ -2371,10 +2377,16 @@ class VirtualMachine:
   def byte_BUILD_SLICE(self, state, op):
     if op.arg == 2:
       state, (x, y) = state.popn(2)
-      return state.push(self.ctx.convert.build_slice(state.node, x, y))
+      sli =  self.ctx.convert.build_slice(state.node, x, y)
+      opcode_list.append({'opcode': 'BUILD_SLICE', 'start_id': f'v{x.id}', 'stop_id': f'v{y.id}',
+                          'ret_id': f'v{sli.id}'})
+      return state.push(sli)
     elif op.arg == 3:
       state, (x, y, z) = state.popn(3)
-      return state.push(self.ctx.convert.build_slice(state.node, x, y, z))
+      sli = self.ctx.convert.build_slice(state.node, x, y, z)
+      opcode_list.append({'opcode': 'BUILD_SLICE', 'start_id': f'v{x.id}', 'stop_id': f'v{y.id}', 'step_id': f'v{z.id}',
+                          'ret_id': f'v{sli.id}'})
+      return state.push(sli)
     else:  # pragma: no cover
       raise VirtualMachineError(f"Strange BUILD_SLICE count: {op.arg!r}")
 
@@ -2566,6 +2578,7 @@ class VirtualMachine:
     """Get the iterator for an object."""
     state, seq = state.pop()
     state, itr = self._get_iter(state, seq)
+    opcode_list.append({'opcode': 'GET_ITER', 'seq_id': f'v{seq.id}', 'seq_data': seq.data, 'itr_id': f'v{itr.id}'})
     # Push the iterator onto the stack and return.
     return state.push(itr)
 
@@ -2597,6 +2610,7 @@ class VirtualMachine:
     # the double-pop of END_FOR is not needed.
     self.store_jump(op.target, state.pop_and_discard())
     state, f = self.load_attr(state, state.top(), "__next__")
+    opcode_list.append({'opcode': 'FOR_ITER', 'iter_id': f"v{state.top().id}", 'func_id': f"v{f.id}"})
     state = state.push(f)
     return self.call_function_from_stack(state, 0, None, None)
 
@@ -3050,6 +3064,7 @@ class VirtualMachine:
 
   def byte_RETURN_VALUE(self, state, op):
     state, var = state.pop()
+    opcode_list.append({'opcode': 'RETURN_VALUE', 'value_id': f'v{var.id}', 'value_data': var.data})
     return self._return_value(state, var)
 
   def byte_RETURN_CONST(self, state, op):
@@ -3330,7 +3345,6 @@ class VirtualMachine:
     name = op.argval
     state, self_obj = state.pop()
     state, method = self._load_method(state, self_obj, name)
-    # print({"opcode": "LOAD_METHOD", "name": name, "obj_data": self_obj.data, "val_id": f"v{method.id}"})
     opcode_list.append({"opcode": "LOAD_METHOD", "name": name, "obj_data": self_obj.data, "val_id": f"v{method.id}"})
     self.trace_opcode(op, name, (self_obj, method))
     return state
