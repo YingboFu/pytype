@@ -7,6 +7,7 @@ import os
 import sys
 import traceback
 from typing import Optional
+from pytype.tools.analyze_project.graph import draw_type_inference_graph, opcode_list
 
 import libcst
 from pytype import __version__
@@ -81,7 +82,9 @@ def _set_verbosity_from(posarg):
 def _call(analyze_types, src, options, loader):
   """Helper function to call analyze.check/infer_types."""
   loader = loader or load_pytd.create_loader(options)
-  return analyze_types(src=src, options=options, loader=loader)
+  ret = analyze_types(src=src, options=options, loader=loader)
+  draw_type_inference_graph(opcode_list)
+  return ret
 
 
 def check_py(src, options=None, loader=None):

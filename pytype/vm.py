@@ -17,7 +17,6 @@ import enum
 import itertools
 import logging
 import re
-from pytype.tools.analyze_project.graph import draw_type_inference_graph
 from typing import Any, Dict, List, Optional, Tuple
 
 from pycnite import marshal as pyc_marshal
@@ -50,10 +49,10 @@ from pytype.typegraph import cfg
 from pytype.typegraph import cfg_utils
 from pytype.debug import show_ordered_code
 from pytype.blocks.blocks import OrderedCode
+from pytype.tools.analyze_project.graph import opcode_list
 
 
 log = logging.getLogger(__name__)
-opcode_list = []
 
 
 @dataclasses.dataclass(eq=True, frozen=True)
@@ -618,7 +617,6 @@ class VirtualMachine:
     self.late_annotations = None  # prevent adding unresolvable annotations
     assert not self.frames, "Frames left over!"
     log.info("Final node: <%d>%s", node.id, node.name)
-    draw_type_inference_graph(opcode_list)
     return node, f_globals.members
 
   def flatten_late_annotation(self, node, annot, f_globals):

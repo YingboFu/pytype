@@ -1,6 +1,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 
+opcode_list = []  # recording all opcodes to draw the type inference graph
 
 def clean_edges(edges):
     ret = []
