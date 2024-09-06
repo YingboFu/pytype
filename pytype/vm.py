@@ -2868,6 +2868,7 @@ class VirtualMachine:
     func.decorators = self._director.decorators[op.line]
     func.cache_return = self._director.has_pragma("cache-return", op.line)
     vm_utils.process_function_type_comment(state.node, op, func, self.ctx)
+    opcode_list.append({'opcode': 'MAKE_FUNCTION', 'func_name': func.name, 'annot': annot})
     self.trace_opcode(op, func.name, func_var)
     self.trace_functiondef(func_var)
     return state.push(func_var)
@@ -3723,6 +3724,7 @@ class VirtualMachine:
   def byte_RESUME(self, state, op):
     # No stack or type effects
     del op
+    opcode_list.append({"opcode": "RESUME", 'state_node_name': state.node.name})
     return state
 
   def byte_PRECALL(self, state, op):

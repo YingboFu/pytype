@@ -1,5 +1,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
+from pytype.abstract._classes import PyTDClass, ParameterizedClass, TupleClass
+from pytype.abstract._singletons import Unsolvable
 
 opcode_list = []  # recording all opcodes to draw the type inference graph
 
@@ -187,7 +189,27 @@ def draw_type_inference_graph(opcode_list):
                 for edge in edges:
                     if edge[1] == element['start_id'] or edge[1] == element['stop_id']:
                         edge[1] = f"{element['ret_id']}"
-
+        elif element['opcode'] == 'RESUME':
+            for opcode in opcode_list:
+                if opcode['opcode'] == 'MAKE_FUNCTION' and f"Function:{opcode['func_name']}" == element['state_node_name']:
+                    for id, ann in opcode['annot'].items():
+                        if isinstance(ann, PyTDClass):
+                            edges.append([ann.name, id])
+                        elif isinstance(ann, ParameterizedClass):
+                            base_cls = ''
+                            param_type = ''
+                            if isinstance(ann.base_cls, PyTDClass):
+                                base_cls = ann.base_cls.name
+                            if isinstance(ann._formal_type_parameters['_T'], PyTDClass):
+                                param_type = ann._formal_type_parameters['_T'].name
+                            elif isinstance(ann._formal_type_parameters['_T'], Unsolvable):
+                                param_type = 'Any'
+                            if base_cls != '' and param_type != '':
+                                edges.append([f"{base_cls}[{param_type}]", id])
+                            else:
+                                edges.append([ann, id])
+                        else:
+                            edges.append([ann, id])
     edges_clean = clean_edges(edges)
     print('====edges====')
     for edge in edges_clean:
