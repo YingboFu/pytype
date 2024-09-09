@@ -65,6 +65,11 @@ def call_opcode_handler(edges, element, opcode_list):
     else:
         for edge in edges:
             if edge[1] == f"v{element['funcv'].id}":
+                if edge[0].split('.')[-1] == 'replace':
+                    for e in edges[::-1]:
+                        if e[1] == edge[0]:
+                            e[1] = f"v{element['ret'].id}"
+                            return
                 edge[1] = f"v{element['ret'].id}"
         if element['posargs']:
             for arg in element['posargs']:
@@ -120,9 +125,27 @@ def draw_type_inference_graph(opcode_list):
         elif element['opcode'] == 'BINARY_OP':
             if element['name'] == '__sub__':
                 pass
-            for edge in edges:
-                if edge[1] == element['x_id'] or edge[1] == element['y_id']:
-                    edge[1] = element['ret_id']
+            if element['name'] == '__getitem__':
+                x_name = ''
+                y_name = ''
+                for edge in edges:
+                    if edge[1] == element['x_id']:
+                        x_name = edge[0]
+                    if edge[1] == element['y_id']:
+                        y_name = edge[0]
+                if y_name != '':
+                    for edge in edges:
+                        if edge[1] == element['x_id'] or edge[1] == element['y_id']:
+                            edge[1] = f"{x_name}[{y_name}]"
+                    edges.append([f"{x_name}[{y_name}]", element['ret_id']])
+                else:
+                    for edge in edges:
+                        if edge[1] == element['x_id'] or edge[1] == element['y_id']:
+                            edge[1] = element['ret_id']
+            else:
+                for edge in edges:
+                    if edge[1] == element['x_id'] or edge[1] == element['y_id']:
+                        edge[1] = element['ret_id']
         elif element['opcode'] == 'STORE_NAME':
             found = False
             for edge in edges:
@@ -180,15 +203,6 @@ def draw_type_inference_graph(opcode_list):
                     edge[1] = f"iter_{element['seq_id']}"
             for value_id in element['value_ids']:
                 edges.append([f"iter_{element['seq_id']}", value_id])
-        elif element['opcode'] == 'BUILD_SLICE':
-            if 'step_id' in element:
-                for edge in edges:
-                    if edge[1] == element['start_id'] or edge[1] == element['stop_id'] or edge[1] == element['step_id']:
-                        edge[1] = f"{element['ret_id']}"
-            else:
-                for edge in edges:
-                    if edge[1] == element['start_id'] or edge[1] == element['stop_id']:
-                        edge[1] = f"{element['ret_id']}"
         elif element['opcode'] == 'RESUME':
             for opcode in opcode_list:
                 if opcode['opcode'] == 'MAKE_FUNCTION' and f"Function:{opcode['func_name']}" == element['state_node_name']:
@@ -210,6 +224,16 @@ def draw_type_inference_graph(opcode_list):
                                 edges.append([ann, id])
                         else:
                             edges.append([ann, id])
+        elif element['opcode'] == 'RETURN_VALUE':
+            for edge in edges:
+                if edge[1] == element['value_id']:
+                    edge[1] = 'return'
+        elif element['opcode'] == 'COMPARE_OP':
+            for edge in edges:
+                if edge[1] == element['x_id'] or edge[1] == element['y_id']:
+                    edge[1] = element['ret_id']
+        elif element['opcode'] == 'BUILD_STRING':
+            edges.append(['str', element['val_id']])
     edges_clean = clean_edges(edges)
     print('====edges====')
     for edge in edges_clean:

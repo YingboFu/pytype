@@ -2021,6 +2021,7 @@ class VirtualMachine:
           # This is an enum match
           name = case_val.name
         self.ctx.errorlog.redundant_match(self.frames, name)
+      opcode_list.append({"opcode": "COMPARE_OP", "x_id": f"v{x.id}", "y_id": f"v{y.id}", "ret_id": f"v{ret.id}"})
       return state.push(ret)
 
     # Explicit, redundant, switch statement, to make it easier to address the
@@ -2060,6 +2061,7 @@ class VirtualMachine:
       # (https://docs.python.org/2/library/stdtypes.html#comparisons or
       # (https://docs.python.org/3/library/stdtypes.html#comparisons)
       ret.AddBinding(self.ctx.convert.primitive_instances[bool], [], state.node)
+    opcode_list.append({"opcode": "COMPARE_OP", "x_id": f"v{x.id}", "y_id": f"v{y.id}", "ret_id": f"v{ret.id}"})
     return state.push(ret)
 
   def byte_COMPARE_OP(self, state, op):
@@ -3233,7 +3235,9 @@ class VirtualMachine:
     # TODO(mdemello): Test this.
     state, _ = state.popn(op.arg)
     ret = abstract.Instance(self.ctx.convert.str_type, self.ctx)
-    return state.push(ret.to_variable(state.node))
+    var = ret.to_variable(state.node)
+    opcode_list.append({"opcode": "BUILD_STRING", "val_id": f"v{var.id}"})
+    return state.push(var)
 
   def byte_GET_AITER(self, state, op):
     """Implementation of the GET_AITER opcode."""

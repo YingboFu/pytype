@@ -7,9 +7,9 @@ from pytype.tools.annotate_ast import annotate_ast
 
 source_code = """
 l = [1, 's', 2]	# infered as List[Union[int, str]]
-l1 = l[0:2]		# infered as Union[List[int], List[str]]
-l2 = l[0:1]		# infered as Union[List[int], List[str]]
-l3 = l[1]
+l0 = l[0]
+l1 = l[1]
+l2 = l[2]
 """
 
 def annotate(source):
