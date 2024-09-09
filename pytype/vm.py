@@ -2096,7 +2096,8 @@ class VirtualMachine:
       state = state.push(val)
     # We need to trace both the object and the attribute.
     self.trace_opcode(op, name, (obj, val))
-    opcode_list.append({"opcode": "LOAD_ATTR", "name": name, "obj_data": obj.data, "val_id": f"v{val.id}"})
+    opcode_list.append({"opcode": "LOAD_ATTR", "name": name, "obj_id": f"v{obj.id}", "obj_data": obj.data,
+                        "value_id": f"v{val.id}"})
     return state
 
   def _get_type_of_attr_to_store(self, node, op, obj, name):
@@ -2402,6 +2403,7 @@ class VirtualMachine:
     """Pops top-of-stack and uses it to extend the list at stack[op.arg]."""
     state, update = state.pop()
     target = state.peek(op.arg)
+    opcode_list.append({"opcode": "LIST_EXTEND", "update_id": f"v{update.id}", "target_id": f"v{target.id}"})
     if not all(abstract_utils.is_concrete_list(v) for v in target.data):
       state, _ = self._call(state, target, "extend", (update,))
       return state
@@ -3348,7 +3350,8 @@ class VirtualMachine:
     name = op.argval
     state, self_obj = state.pop()
     state, method = self._load_method(state, self_obj, name)
-    opcode_list.append({"opcode": "LOAD_METHOD", "name": name, "obj_data": self_obj.data, "val_id": f"v{method.id}"})
+    opcode_list.append({"opcode": "LOAD_METHOD", "name": name, "obj_id": f"v{self_obj.id}", "obj_data": self_obj.data,
+                        "value_id": f"v{method.id}"})
     self.trace_opcode(op, name, (self_obj, method))
     return state
 

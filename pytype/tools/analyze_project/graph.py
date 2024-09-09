@@ -56,6 +56,31 @@ def find_obj_name_via_data(opcode_list, element):
             break
     return obj_name
 
+def find_obj_name_via_id_SUBSCR(opcode_list, element, edges):
+    obj_name = ''
+    for i in range(opcode_list.index(element) - 1, -1, -1):
+        if opcode_list[i]['opcode'] == 'BINARY_OP' and opcode_list[i]['ret_id'] == element['obj_id']:
+            for edge in edges:
+                if edge[1] == opcode_list[i]['ret_id']:
+                    obj_name = edge[0]
+        elif ((opcode_list[i]['opcode'] == 'LOAD_CONST' or opcode_list[i]['opcode'] == 'LOAD_FAST'
+             or opcode_list[i]['opcode'] == 'LOAD_NAME' or opcode_list[i]['opcode'] == 'LOAD_FOLDED_CONST'
+             or opcode_list[i]['opcode'] == 'LOAD_GLOBAL') and opcode_list[i]['value_id'] == element['obj_id']):
+            if 'name' in opcode_list[i]:
+                if opcode_list[i]['name'] == 'self':
+                    obj_name = element['obj_data'][0].name
+                else:
+                    obj_name = opcode_list[i]['name']
+            elif 'raw_const' in opcode_list[i]:
+                obj_name = opcode_list[i]['raw_const']
+            break
+        elif ((opcode_list[i]['opcode'] == 'LOAD_ATTR' or opcode_list[i]['opcode'] == 'LOAD_METHOD')
+              and opcode_list[i]['value_id'] == element['obj_id']):
+            for edge in edges:
+                if edge[1] ==opcode_list[i]['value_id']:
+                    obj_name = edge[0]
+    return obj_name
+
 def call_opcode_handler(edges, element, opcode_list):
     last_opcode = opcode_list[opcode_list.index(element)-1]
     if last_opcode['opcode'] == 'RETURN_VALUE' and last_opcode['value_data'] == element['ret'].data:
@@ -168,12 +193,16 @@ def draw_type_inference_graph(opcode_list):
                 if edge[1] == element['val_id']:
                     edge[1] = f"{obj_name}.{element['name']}"
         elif element['opcode'] == 'LOAD_ATTR' or element['opcode'] == 'LOAD_METHOD':
-            obj_name = find_obj_name_via_data(opcode_list, element)
+            obj_name = find_obj_name_via_id_SUBSCR(opcode_list, element, edges)
+            if obj_name == '':
+                obj_name = find_obj_name_via_data(opcode_list, element)
             if element['name'] == 'append':
-                edges.append([obj_name, element['val_id']])
+                edges.append([obj_name, element['value_id']])
             else:
-                edges.append([obj_name, f"{obj_name}.{element['name']}"])
-                edges.append([f"{obj_name}.{element['name']}", element['val_id']])
+                for edge in edges:
+                    if edge[1] == element['obj_id']:
+                        edge[1] = f"{obj_name}.{element['name']}"
+                edges.append([f"{obj_name}.{element['name']}", element['value_id']])
         elif element['opcode'] == 'CALL':
             call_opcode_handler(edges, element, opcode_list)
         elif element['opcode'] == 'APPEND':
@@ -185,7 +214,7 @@ def draw_type_inference_graph(opcode_list):
                 if edge[1] == f"v{element['posargs'][0].id}":
                     new_item = edge[0]
             edges.append([new_item, l])
-        elif element['opcode'] == 'DICT_MERGE':
+        elif element['opcode'] == 'DICT_MERGE' or element['opcode'] == 'LIST_EXTEND':
             for edge in edges:
                 if edge[1] == element['update_id']:
                     edge[1] = element['target_id']

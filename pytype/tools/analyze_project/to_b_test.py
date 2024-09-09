@@ -6,10 +6,11 @@ from pytype import config
 from pytype.tools.annotate_ast import annotate_ast
 
 source_code = """
-l = [1, 's', 2]	# infered as List[Union[int, str]]
-l0 = l[0]
-l1 = l[1]
-l2 = l[2]
+l = []
+l[0] = 1
+l[1] = 'str'
+res1 = l
+res2 = l[0]
 """
 
 def annotate(source):
@@ -35,7 +36,7 @@ def _get_node_key(node):
         return base
 
 with open('/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/str_convert.py', "r") as f:
-    source_code = f.read()
+    # source_code = f.read()
     ann_module = annotate(source_code)
     anns = get_annotations_dict(ann_module)
     for k, v in sorted(anns.items()):
