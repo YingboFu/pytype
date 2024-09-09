@@ -1085,7 +1085,10 @@ class VirtualMachine:
     else:
       value = self._get_value_from_annotations(state, op, name, local, orig_val)
     state = state.forward_cfg_node(f"Store:{name}")
-    opcode_list.append({"opcode": "STORE_NAME", "name": name, "value_id": f"v{value.id}", "value_data": value.data})
+    if op.annotation is not None:
+      opcode_list.append({"opcode": "STORE_NAME", "name": name, "annotation": op.annotation})
+    else:
+      opcode_list.append({"opcode": "STORE_NAME", "name": name, "value_id": f"v{value.id}", "value_data": value.data})
     state = self._store_value(state, name, value, local)
     self.trace_opcode(op, name, value)
     return state

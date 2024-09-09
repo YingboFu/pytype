@@ -172,13 +172,18 @@ def draw_type_inference_graph(opcode_list):
                     if edge[1] == element['x_id'] or edge[1] == element['y_id']:
                         edge[1] = element['ret_id']
         elif element['opcode'] == 'STORE_NAME':
-            found = False
-            for edge in edges:
-                if edge[1] == element['value_id']:
-                    edge[1] = element['name']
-                    found = True
-            if not found:
-                _store_fast(opcode_list, element, edges)
+            if 'annotation' in element:
+                if edges[-1][1] == 'return':
+                    edges[-1][1] = 'v0'
+                edges.append([element['annotation'], element['name']])
+            else:
+                found = False
+                for edge in edges:
+                    if edge[1] == element['value_id']:
+                        edge[1] = element['name']
+                        found = True
+                if not found:
+                    _store_fast(opcode_list, element, edges)
         elif element['opcode'] == 'STORE_SUBSCR':
             obj_name = find_obj_name_via_id(opcode_list, element)
             for edge in edges:
