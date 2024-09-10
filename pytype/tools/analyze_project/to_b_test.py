@@ -6,11 +6,8 @@ from pytype import config
 from pytype.tools.annotate_ast import annotate_ast
 
 source_code = """
-l = []
-l[0] = 1
-l[1] = 'str'
-res1 = l
-res2 = l[0]
+l = [1,2,3]
+s = [str(i) for i in l]
 """
 
 def annotate(source):

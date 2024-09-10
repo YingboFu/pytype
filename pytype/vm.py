@@ -281,6 +281,7 @@ class VirtualMachine:
     Raises:
       VirtualMachineError: if a fatal error occurs.
     """
+    print(op)
     _opcode_counter.inc(op.name)
     self.frame.current_opcode = op
     self._importing = "IMPORT" in op.__class__.__name__
@@ -2242,7 +2243,9 @@ class VirtualMachine:
   def byte_BUILD_TUPLE(self, state, op):
     count = op.arg
     state, elts = state.popn(count)
-    return state.push(self.ctx.convert.build_tuple(state.node, elts))
+    value = self.ctx.convert.build_tuple(state.node, elts)
+    opcode_list.append({"opcode": "BUILD_TUPLE", "elts": elts, "value_data": value.data, "value_id": value.id})
+    return state.push(value)
 
   def byte_BUILD_LIST(self, state, op):
     count = op.arg
@@ -2968,6 +2971,7 @@ class VirtualMachine:
       send_var = self.init_class(state.node, send_type)
     else:
       send_var = self.ctx.new_unsolvable(state.node)
+    opcode_list.append({'opcode': 'YIELD_VALUE', 'yield_id': f'v{yield_value.id}', 'send_id': f'v{send_var.id}'})
     return state.push(send_var)
 
   def byte_IMPORT_NAME(self, state, op):

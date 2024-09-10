@@ -26,6 +26,7 @@ from pytype.pytd import mro
 from pytype.pytd import pytd
 from pytype.pytd import slots
 from pytype.typegraph import cfg
+from pytype.tools.analyze_project.graph import opcode_list
 
 log = logging.getLogger(__name__)
 
@@ -988,6 +989,7 @@ def load_closure_cell(state, op, check_bindings, ctx):
   ctx.vm.set_var_name(cell, name)
   check_for_deleted(state, name, cell, ctx)
   ctx.vm.trace_opcode(op, name, cell)
+  opcode_list.append({"opcode": "LOAD_CLOSURE", "name": name, "cell_data": cell.data, "cell_id": cell.id})
   return state.push(cell)
 
 

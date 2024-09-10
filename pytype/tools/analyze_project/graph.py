@@ -2,6 +2,7 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from pytype.abstract._classes import PyTDClass, ParameterizedClass, TupleClass
 from pytype.abstract._singletons import Unsolvable
+import re
 
 opcode_list = []  # recording all opcodes to draw the type inference graph
 
@@ -127,10 +128,10 @@ def _store_fast(opcode_list, element, edges):
             break
 
 def draw_type_inference_graph(opcode_list):
-    print('====opcodes====')
-    for opcode in opcode_list:
-        print(opcode)
-    print('====opcodes====')
+    # print('====opcodes====')
+    # for opcode in opcode_list:
+    #     print(opcode)
+    # print('====opcodes====')
     edges = []
     for element in opcode_list:
         if element['opcode'] == 'LOAD_CONST':
@@ -138,13 +139,21 @@ def draw_type_inference_graph(opcode_list):
         elif element['opcode'] == 'LOAD_NAME' or element['opcode'] == 'LOAD_GLOBAL':
             edges.append([element['name'], element['value_id']])
         elif element['opcode'] == 'LOAD_FAST':
-            exist = False
-            for edge in edges:
-                if edge[1] == element['name']:
-                    exist = True
-            if not exist:
-                _store_fast(opcode_list, element, edges)
-            edges.append([element['name'], element['value_id']])
+            if re.fullmatch(r"\.\d+", element['name']):
+                # Variables with a ".n" naming scheme are things like iterators for list comprehensions
+                for i in range(opcode_list.index(element) - 1, -1, -1):
+                    if opcode_list[i]['opcode'] == 'GET_ITER':
+                        for edge in edges:
+                            if edge[1] == opcode_list[i]['itr_id']:
+                                edge[1] = element['value_id']
+            else:
+                exist = False
+                for edge in edges:
+                    if edge[1] == element['name']:
+                        exist = True
+                if not exist:
+                    _store_fast(opcode_list, element, edges)
+                edges.append([element['name'], element['value_id']])
         elif element['opcode'] == 'LOAD_FOLDED_CONST':
             edges.append([element['raw_const'], element['value_id']])
         elif element['opcode'] == 'BINARY_OP':
@@ -269,10 +278,10 @@ def draw_type_inference_graph(opcode_list):
         elif element['opcode'] == 'BUILD_STRING':
             edges.append(['str', element['val_id']])
     edges_clean = clean_edges(edges)
-    print('====edges====')
-    for edge in edges_clean:
-        print(edge)
-    print('====edges====')
+    # print('====edges====')
+    # for edge in edges_clean:
+    #     print(edge)
+    # print('====edges====')
     try:
         G = nx.DiGraph()
         G.add_edges_from(edges_clean)
