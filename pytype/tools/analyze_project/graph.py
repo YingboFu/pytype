@@ -285,9 +285,17 @@ def draw_type_inference_graph(opcode_list):
                         else:
                             edges.append([ann, id])
         elif element['opcode'] == 'RETURN_VALUE':
-            for edge in edges:
-                if edge[1] == element['value_id']:
-                    edge[1] = 'return'
+            if element['state_node_name'].startswith('Function:'):
+                for edge in edges:
+                    if edge[1] == element['value_id']:
+                        edge[1] = 'return'
+            else:
+                if opcode_list.index(element) + 2 < len(opcode_list):
+                    next_resume = opcode_list[opcode_list.index(element) + 2]
+                    if next_resume['opcode'] == 'RESUME' and next_resume['state_node_name'].startswith('Function:'):
+                        for edge in edges:
+                            if edge[1] == element['value_id']:
+                                edge[1] = 'return'
         elif element['opcode'] == 'COMPARE_OP':
             for edge in edges:
                 if edge[1] == element['x_id'] or edge[1] == element['y_id']:
