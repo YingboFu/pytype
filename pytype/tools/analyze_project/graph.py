@@ -82,11 +82,28 @@ def find_obj_name_via_id_SUBSCR(opcode_list, element, edges):
                     obj_name = edge[0]
     return obj_name
 
+def find_func_name(opcode_list, element):
+    for i in range(opcode_list.index(element) - 1, -1, -1):
+        if opcode_list[i]['opcode'] == 'MAKE_FUNCTION' and opcode_list[i]['func_var'].id == element['funcv'].id:
+            return opcode_list[i]['func_name']
+
+def find_last_func_call_ret_id(opcode_list, element):
+    for i in range(opcode_list.index(element) - 1, -1, -1):
+        if opcode_list[i]['opcode'] == 'CALL':
+            return f"v{opcode_list[i]['ret'].id}"
+
 def call_opcode_handler(edges, element, opcode_list):
     last_opcode = opcode_list[opcode_list.index(element)-1]
+    func_name = find_func_name(opcode_list, element)
     if last_opcode['opcode'] == 'RETURN_VALUE' and last_opcode['value_data'] == element['ret'].data:
         for edge in edges:
             if edge[1] == last_opcode['value_id']:
+                edge[1] = f"v{element['ret'].id}"
+    elif func_name is not None and (func_name.endswith('<listcomp>') or func_name.endswith('<genexpr>')):
+        # handling listcomp and genexpr
+        last_call_ret_id = find_last_func_call_ret_id(opcode_list, element)
+        for edge in edges:
+            if edge[1] == last_call_ret_id:
                 edge[1] = f"v{element['ret'].id}"
     else:
         for edge in edges:
@@ -128,15 +145,15 @@ def _store_fast(opcode_list, element, edges):
             break
 
 def draw_type_inference_graph(opcode_list):
-    # print('====opcodes====')
-    # for opcode in opcode_list:
-    #     print(opcode)
-    # print('====opcodes====')
+    print('====opcodes====')
+    for opcode in opcode_list:
+        print(opcode)
+    print('====opcodes====')
     edges = []
     for element in opcode_list:
         if element['opcode'] == 'LOAD_CONST':
             edges.append([element['raw_const'], element['value_id']])
-        elif element['opcode'] == 'LOAD_NAME' or element['opcode'] == 'LOAD_GLOBAL':
+        elif element['opcode'] == 'LOAD_NAME' or element['opcode'] == 'LOAD_GLOBAL' or element['opcode'] == 'LOAD_CLOSURE':
             edges.append([element['name'], element['value_id']])
         elif element['opcode'] == 'LOAD_FAST':
             if re.fullmatch(r"\.\d+", element['name']):
@@ -278,10 +295,10 @@ def draw_type_inference_graph(opcode_list):
         elif element['opcode'] == 'BUILD_STRING':
             edges.append(['str', element['val_id']])
     edges_clean = clean_edges(edges)
-    # print('====edges====')
-    # for edge in edges_clean:
-    #     print(edge)
-    # print('====edges====')
+    print('====edges====')
+    for edge in edges_clean:
+        print(edge)
+    print('====edges====')
     try:
         G = nx.DiGraph()
         G.add_edges_from(edges_clean)

@@ -989,7 +989,7 @@ def load_closure_cell(state, op, check_bindings, ctx):
   ctx.vm.set_var_name(cell, name)
   check_for_deleted(state, name, cell, ctx)
   ctx.vm.trace_opcode(op, name, cell)
-  opcode_list.append({"opcode": "LOAD_CLOSURE", "name": name, "cell_data": cell.data, "cell_id": cell.id})
+  opcode_list.append({"opcode": "LOAD_CLOSURE", "name": name, "value_data": cell.data, "value_id": f"v{cell.id}"})
   return state.push(cell)
 
 
