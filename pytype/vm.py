@@ -2244,7 +2244,7 @@ class VirtualMachine:
     count = op.arg
     state, elts = state.popn(count)
     value = self.ctx.convert.build_tuple(state.node, elts)
-    opcode_list.append({"opcode": "BUILD_TUPLE", "elts": elts, "value_data": value.data, "value_id": value.id})
+    opcode_list.append({"opcode": "BUILD_TUPLE", "elts": elts, "value_data": value.data, "value_id": f"v{value.id}"})
     return state.push(value)
 
   def byte_BUILD_LIST(self, state, op):
@@ -2809,6 +2809,7 @@ class VirtualMachine:
     pos_defaults = ()
     kw_defaults = {}
     annot = {}
+    raw_annot = {}
     Flags = pyc_marshal.Flags
     if arg & Flags.MAKE_FUNCTION_HAS_FREE_VARS:
       state, free_vars = state.pop()
@@ -2835,6 +2836,7 @@ class VirtualMachine:
         annot[k] = self.ctx.annotation_utils.convert_function_type_annotation(
             k, annot[k]
         )
+      raw_annot = annot
     if arg & Flags.MAKE_FUNCTION_HAS_KW_DEFAULTS:
       state, packed_kw_def = state.pop()
       kw_defaults = abstract_utils.get_atomic_python_constant(
@@ -2848,7 +2850,7 @@ class VirtualMachine:
     annot = self.ctx.annotation_utils.convert_annotations_list(
         state.node, annot.items()
     )
-    return state, pos_defaults, kw_defaults, annot, free_vars
+    return state, pos_defaults, kw_defaults, annot, free_vars, raw_annot
 
   def byte_MAKE_FUNCTION(self, state, op):
     """Create a function and push it onto the stack."""
@@ -2858,7 +2860,7 @@ class VirtualMachine:
       state, name_var = state.pop()
       name = abstract_utils.get_atomic_python_constant(name_var)
     state, code = state.pop()
-    state, defaults, kw_defaults, annot, free_vars = (
+    state, defaults, kw_defaults, annot, free_vars, raw_annot = (
         self._get_extra_function_args(state, op.arg)
     )
     globs = self.get_globals_dict()
@@ -2878,7 +2880,7 @@ class VirtualMachine:
     func.decorators = self._director.decorators[op.line]
     func.cache_return = self._director.has_pragma("cache-return", op.line)
     vm_utils.process_function_type_comment(state.node, op, func, self.ctx)
-    opcode_list.append({'opcode': 'MAKE_FUNCTION', 'func_name': func.name, 'func_var': func_var, 'annot': annot})
+    opcode_list.append({'opcode': 'MAKE_FUNCTION', 'func_name': func.name, 'func_var': func_var, 'annot': raw_annot})
     self.trace_opcode(op, func.name, func_var)
     self.trace_functiondef(func_var)
     return state.push(func_var)

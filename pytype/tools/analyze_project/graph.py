@@ -64,6 +64,18 @@ def find_obj_name_via_id_SUBSCR(opcode_list, element, edges):
             for edge in edges:
                 if edge[1] == opcode_list[i]['ret_id']:
                     obj_name = edge[0]
+        elif opcode_list[i]['opcode'] == 'CALL' and f"v{opcode_list[i]['ret'].id}" == element['obj_id']:
+            for edge in edges:
+                if edge[1] == f"v{opcode_list[i]['ret'].id}":
+                    if obj_name == '':
+                        obj_name = f"{edge[0]}()"
+                    else:
+                        ridx = obj_name.rfind(')')
+                        if ridx != -1:
+                            if obj_name[ridx - 1] == '(':
+                                obj_name = obj_name[:ridx] + f"{edge[0]}" + obj_name[ridx:]
+                            else:
+                                obj_name = obj_name[:ridx] + f",{edge[0]}" + obj_name[ridx:]
         elif ((opcode_list[i]['opcode'] == 'LOAD_CONST' or opcode_list[i]['opcode'] == 'LOAD_FAST'
              or opcode_list[i]['opcode'] == 'LOAD_NAME' or opcode_list[i]['opcode'] == 'LOAD_FOLDED_CONST'
              or opcode_list[i]['opcode'] == 'LOAD_GLOBAL') and opcode_list[i]['value_id'] == element['obj_id']):
@@ -144,7 +156,24 @@ def _store_fast(opcode_list, element, edges):
                     edge[1] = element['name']
             break
 
+def _pre_process_opcodes(opcode_list):
+    # removing redundancy caused by double handling of variable annotations
+    clean_opcodes = []
+    redundancy = False
+    ann_dict_id = 'v0'
+    for op in opcode_list:
+        if op['opcode'] == 'LOAD_NAME' and op['name'] == '__annotations__':
+            ann_dict_id = op['value_id']
+            redundancy = True
+        elif op['opcode'] == 'STORE_SUBSCR' and op['obj_id'] == ann_dict_id:
+            redundancy = False
+            continue
+        if not redundancy:
+            clean_opcodes.append(op)
+    return clean_opcodes
+
 def draw_type_inference_graph(opcode_list):
+    opcode_list = _pre_process_opcodes(opcode_list)
     print('====opcodes====')
     for opcode in opcode_list:
         print(opcode)
@@ -152,7 +181,10 @@ def draw_type_inference_graph(opcode_list):
     edges = []
     for element in opcode_list:
         if element['opcode'] == 'LOAD_CONST':
-            edges.append([element['raw_const'], element['value_id']])
+            if element['raw_const'] is None:
+                edges.append(['None', element['value_id']])
+            else:
+                edges.append([element['raw_const'], element['value_id']])
         elif element['opcode'] == 'LOAD_NAME' or element['opcode'] == 'LOAD_GLOBAL' or element['opcode'] == 'LOAD_CLOSURE':
             edges.append([element['name'], element['value_id']])
         elif element['opcode'] == 'LOAD_FAST':
@@ -266,24 +298,11 @@ def draw_type_inference_graph(opcode_list):
         elif element['opcode'] == 'RESUME':
             for opcode in opcode_list:
                 if opcode['opcode'] == 'MAKE_FUNCTION' and f"Function:{opcode['func_name']}" == element['state_node_name']:
-                    for id, ann in opcode['annot'].items():
-                        if isinstance(ann, PyTDClass):
-                            edges.append([ann.name, id])
-                        elif isinstance(ann, ParameterizedClass):
-                            base_cls = ''
-                            param_type = ''
-                            if isinstance(ann.base_cls, PyTDClass):
-                                base_cls = ann.base_cls.name
-                            if isinstance(ann._formal_type_parameters['_T'], PyTDClass):
-                                param_type = ann._formal_type_parameters['_T'].name
-                            elif isinstance(ann._formal_type_parameters['_T'], Unsolvable):
-                                param_type = 'Any'
-                            if base_cls != '' and param_type != '':
-                                edges.append([f"{base_cls}[{param_type}]", id])
-                            else:
-                                edges.append([ann, id])
-                        else:
-                            edges.append([ann, id])
+                    for k, ann in opcode['annot'].items():
+                        lidx = repr(ann).find("'")
+                        ridx = repr(ann).rfind("'")
+                        ann_str = repr(ann)[lidx + 1: ridx]
+                        edges.append([ann_str, k])
         elif element['opcode'] == 'RETURN_VALUE':
             if element['state_node_name'].startswith('Function:'):
                 for edge in edges:
@@ -302,6 +321,20 @@ def draw_type_inference_graph(opcode_list):
                     edge[1] = element['ret_id']
         elif element['opcode'] == 'BUILD_STRING':
             edges.append(['str', element['val_id']])
+        elif element['opcode'] == 'BUILD_TUPLE':
+            tuple_str = ''
+            elt_ids = [f"v{item.id}" for item in element['elts']]
+            for edge in edges:
+                if edge[1] in elt_ids:
+                    if tuple_str == '':
+                        tuple_str = edge[0]
+                    else:
+                        tuple_str = tuple_str + ", " + edge[0]
+            for edge in edges:
+                if edge[1] in elt_ids:
+                    edge[1] = tuple_str
+            edges.append([tuple_str, element['value_id']])
+
     edges_clean = clean_edges(edges)
     print('====edges====')
     for edge in edges_clean:
