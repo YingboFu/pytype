@@ -546,7 +546,7 @@ class VirtualMachine:
     code, block_graph = blocks.process_code(code)
     if store_blockgraph:
       self.block_graph = block_graph
-    show_ordered_code(code)
+    # show_ordered_code(code)
     return code
 
   def run_bytecode(self, node, code, f_globals=None, f_locals=None):
@@ -934,8 +934,8 @@ class VirtualMachine:
 
   def load_constant(self, state, op, raw_const):
     const = self.ctx.convert.constant_to_var(raw_const, node=state.node)
-    if isinstance(raw_const, OrderedCode):
-      show_ordered_code(raw_const)
+    # if isinstance(raw_const, OrderedCode):
+    #   show_ordered_code(raw_const)
     opcode_list.append({"line": op.line, "opcode": "LOAD_CONST", "value_id": f"v{const.id}", "value_data": const.data, "raw_const": raw_const})
     self.trace_opcode(op, raw_const, const)
     return state.push(const)

@@ -24,6 +24,7 @@ def main():
   parser = parse_args.make_parser()
   src1 = '/Users/fuyingbo/Desktop/dataset/offu---WeRoBot/werobot/client.py'
   src2 = '/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/str_convert.py'
+  src3= '/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/stringify.py'
   args = parser.parse_args([src2])
   if args.version:
     print(io.get_pytype_version())
