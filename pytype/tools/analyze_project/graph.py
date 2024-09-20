@@ -69,7 +69,8 @@ def find_obj_name_via_id_SUBSCR(opcode_list, element, edges):
                                 obj_name = obj_name[:ridx] + f",{strip_tag(edge[1])}" + obj_name[ridx:]
         elif ((opcode_list[i]['opcode'] == 'LOAD_CONST' or opcode_list[i]['opcode'] == 'LOAD_FAST'
              or opcode_list[i]['opcode'] == 'LOAD_NAME' or opcode_list[i]['opcode'] == 'LOAD_FOLDED_CONST'
-             or opcode_list[i]['opcode'] == 'LOAD_GLOBAL') and opcode_list[i]['value_id'] == element['obj_id']):
+             or opcode_list[i]['opcode'] == 'LOAD_GLOBAL' or opcode_list[i]['opcode'] == 'LOAD_CLOSURE')
+              and opcode_list[i]['value_id'] == element['obj_id']):
             if 'name' in opcode_list[i]:
                 if opcode_list[i]['name'] == 'self':
                     obj_name = element['obj_data'][0].name
@@ -120,28 +121,38 @@ def call_opcode_handler(edges, element, opcode_list):
                             e[2] = f"v{element['ret'].id}"
                             return
                 edge[0] = element['line']
+                if last_opcode['opcode'] != 'FOR_ITER' or last_opcode['func_id'] != f"v{element['funcv'].id}":
+                    edge[1] = f"<FUNC> {strip_tag(edge[1])}"
                 edge[2] = f"v{element['ret'].id}"
         if element['posargs']:
             for arg in element['posargs']:
                 for edge in edges:
                     if edge[2] == f"v{arg.id}":
                         edge[0] = element['line']
+                        if not edge[1].startswith('<FUNC>'):
+                            edge[1] = f"<PARAM> {strip_tag(edge[1])}"
                         edge[2] = f"v{element['ret'].id}"
         if element['namedargs']:
             for k, v in element['namedargs'].items():
                 for edge in edges:
                     if edge[2] == f"v{v.id}":
                         edge[0] = element['line']
+                        if not edge[1].startswith('FUNC'):
+                            edge[1] = f"<PARAM> {strip_tag(edge[1])}"
                         edge[2] = f"v{element['ret'].id}"
         if element['starargs']:
             for edge in edges:
                 if edge[2] == f"v{element['starargs'].id}":
                     edge[0] = element['line']
+                    if not edge[1].startswith('FUNC'):
+                        edge[1] = f"<PARAM> {strip_tag(edge[1])}"
                     edge[2] = f"v{element['ret'].id}"
         if element['starstarargs']:
             for edge in edges:
                 if edge[2] == f"v{element['starstarargs'].id}":
                     edge[0] = element['line']
+                    if not edge[1].startswith('FUNC'):
+                        edge[1] = f"<PARAM> {strip_tag(edge[1])}"
                     edge[2] = f"v{element['ret'].id}"
 
 def _store_fast(opcode_list, element, edges):
@@ -218,7 +229,19 @@ def draw_type_inference_graph(opcode_list):
                 y_name = ''
                 for edge in edges:
                     if edge[2] == element['x_id']:
-                        x_name = strip_tag(edge[1])
+                        if x_name == '':
+                            if edge[1].startswith('<FUNC>'):
+                                x_name = f"{strip_tag(edge[1])}()"
+                            else:
+                                x_name = strip_tag(edge[1])
+                        else:
+                            if edge[1].startswith('<PARAM>'):
+                                ridx = x_name.rfind(')')
+                                if ridx != -1:
+                                    if x_name[ridx - 1] == '(':
+                                        x_name = x_name[:ridx] + f"{strip_tag(edge[1])}" + x_name[ridx:]
+                                    else:
+                                        x_name = x_name[:ridx] + f", {strip_tag(edge[1])}" + x_name[ridx:]
                     if edge[2] == element['y_id']:
                         y_name = strip_tag(edge[1])
                 if y_name != '':
@@ -350,9 +373,22 @@ def draw_type_inference_graph(opcode_list):
             for edge in edges:
                 if edge[2] in elt_ids:
                     if tuple_str == '':
-                        tuple_str = strip_tag(edge[1])
+                        if edge[1].startswith('<FUNC>'):
+                            tuple_str = f"{strip_tag(edge[1])}()"
+                        else:
+                            tuple_str = strip_tag(edge[1])
                     else:
-                        tuple_str = tuple_str + ", " + strip_tag(edge[1])
+                        if edge[1].startswith('<FUNC>'):
+                            tuple_str = tuple_str + ", " + f"{strip_tag(edge[1])}()"
+                        elif edge[1].startswith('<PARAM>'):
+                            ridx = tuple_str.rfind(')')
+                            if ridx != -1:
+                                if tuple_str[ridx - 1] == '(':
+                                    tuple_str = tuple_str[:ridx] + f"{strip_tag(edge[1])}" + tuple_str[ridx:]
+                                else:
+                                    tuple_str = tuple_str[:ridx] + f", {strip_tag(edge[1])}" + tuple_str[ridx:]
+                        else:
+                            tuple_str = tuple_str + ", " + strip_tag(edge[1])
             for edge in edges:
                 if edge[2] in elt_ids:
                     edge[0] = element['line']
