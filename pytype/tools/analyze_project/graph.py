@@ -16,6 +16,8 @@ def clean_edges(edges):
             continue
         if strip_tag(v) == '__qualname__' or strip_tag(v) == '__doc__' or strip_tag(v) == '__module__' or strip_tag(u) == strip_tag(v):
             continue
+        if [l, u, v] in ret:
+            continue
         ret.append([l, u, v])
     return ret
 
@@ -173,7 +175,10 @@ def _store_fast(opcode_list, element, edges):
             for edge in edges:
                 if edge[2] == opcode_list[i]['value_id']:
                     edge[0] = element['line']
-                    edge[2] = f"<IDENT> {element['name']}"
+                    if element['name'] == 'self':
+                        edge[2] = f"<IDENT> {element['value_data'][0].name}"
+                    else:
+                        edge[2] = f"<IDENT> {element['name']}"
             break
 
 def _pre_process_opcodes(opcode_list):
@@ -228,7 +233,10 @@ def draw_type_inference_graph(opcode_list):
                         exist = True
                 if not exist:
                     _store_fast(opcode_list, element, edges)
-                edges.append([element['line'], f"<IDENT> {element['name']}", element['value_id']])
+                if element['name'] == 'self':
+                    edges.append([element['line'], f"<IDENT> {element['value_data'][0].name}", element['value_id']])
+                else:
+                    edges.append([element['line'], f"<IDENT> {element['name']}", element['value_id']])
         elif element['opcode'] == 'LOAD_FOLDED_CONST':
             edges.append([element['line'], f"<CONST> {element['raw_const']}", element['value_id']])
         elif element['opcode'] == 'BINARY_OP':
@@ -307,10 +315,14 @@ def draw_type_inference_graph(opcode_list):
             if element['name'] == 'append':
                 edges.append([element['line'], f"<IDENT> {obj_name}", element['value_id']])
             else:
+                found = False
                 for edge in edges:
                     if edge[2] == element['obj_id']:
                         edge[0] = element['line']
                         edge[2] = f"<IDENT> {obj_name}.{element['name']}"
+                        found = True
+                if not found:
+                    edges.append([element['line'], f"<IDENT> {obj_name}", f"<IDENT> {obj_name}.{element['name']}"])
                 edges.append([element['line'], f"<IDENT> {obj_name}.{element['name']}", element['value_id']])
         elif element['opcode'] == 'CALL':
             call_opcode_handler(edges, element, opcode_list)
@@ -347,7 +359,9 @@ def draw_type_inference_graph(opcode_list):
                 edges.append([element['line'], f"<ITER> {element['seq_id']}", value_id])
         elif element['opcode'] == 'RESUME':
             for opcode in opcode_list:
-                if opcode['opcode'] == 'MAKE_FUNCTION' and f"Function:{opcode['func_name']}" == element['state_node_name']:
+                if (opcode['opcode'] == 'MAKE_FUNCTION' and
+                        (f"Function:{opcode['func_name']}" == element['state_node_name'] or
+                         f"Method:{opcode['func_name']}" == element['state_node_name'])):
                     for k, ann in opcode['annot'].items():
                         lidx = repr(ann).find("'")
                         ridx = repr(ann).rfind("'")
@@ -357,7 +371,7 @@ def draw_type_inference_graph(opcode_list):
                         else:
                             edges.append([opcode['line'], f"<TYPE> {ann_str}", f"<RET> {k}"])
         elif element['opcode'] == 'RETURN_VALUE':
-            if element['state_node_name'].startswith('Function:'):
+            if element['state_node_name'].startswith('Function:') or element['state_node_name'].startswith('Method:'):
                 for edge in edges:
                     if edge[2] == element['value_id']:
                         edge[0] = element['line']
@@ -365,7 +379,8 @@ def draw_type_inference_graph(opcode_list):
             else:
                 if opcode_list.index(element) + 2 < len(opcode_list):
                     next_resume = opcode_list[opcode_list.index(element) + 2]
-                    if next_resume['opcode'] == 'RESUME' and next_resume['state_node_name'].startswith('Function:'):
+                    if next_resume['opcode'] == 'RESUME' and (next_resume['state_node_name'].startswith('Function:')
+                                                              or next_resume['state_node_name'].startswith('Method:')):
                         for edge in edges:
                             if edge[2] == element['value_id']:
                                 edge[0] = element['line']
@@ -417,7 +432,7 @@ def draw_type_inference_graph(opcode_list):
 
     edges_clean = clean_edges(edges)
     print('====edges====')
-    for edge in edges_clean:
+    for edge in sorted(edges_clean, key=lambda x: x[0]):
         print(edge)
     print('====edges====')
     # try:
