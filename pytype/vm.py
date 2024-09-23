@@ -2498,6 +2498,8 @@ class VirtualMachine:
     key, val = item
     the_map = state.peek(count)
     state, _ = self._call(state, the_map, "__setitem__", (key, val))
+    opcode_list.append(
+      {"line": op.line, "opcode": "MAP_ADD", "map_id": f"v{the_map.id}", "key_id": f"v{key.id}", "value_id": f"v{val.id}"})
     return state
 
   def byte_DICT_MERGE(self, state, op):

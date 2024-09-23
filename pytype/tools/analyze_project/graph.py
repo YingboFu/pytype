@@ -91,24 +91,34 @@ def find_func_name(opcode_list, element):
         if opcode_list[i]['opcode'] == 'MAKE_FUNCTION' and opcode_list[i]['func_var'].id == element['funcv'].id:
             return opcode_list[i]['func_name']
 
-def find_last_func_call_ret_id(opcode_list, element):
+def find_last_yield_value_id(opcode_list, element):
     for i in range(opcode_list.index(element) - 1, -1, -1):
-        if opcode_list[i]['opcode'] == 'CALL':
-            return f"v{opcode_list[i]['ret'].id}"
+        if opcode_list[i]['opcode'] == 'YIELD_VALUE':
+            return opcode_list[i]['send_id']
+
+def find_map_id(opcode_list, element):
+    for i in range(opcode_list.index(element) - 1, -1, -1):
+        if opcode_list[i]['opcode'] == 'MAP_ADD':
+            return opcode_list[i]['map_id']
 
 def call_opcode_handler(edges, element, opcode_list):
     last_opcode = opcode_list[opcode_list.index(element)-1]
     func_name = find_func_name(opcode_list, element)
-    if last_opcode['opcode'] == 'RETURN_VALUE' and last_opcode['value_data'] == element['ret'].data:
+    if func_name is not None and (func_name.endswith('<listcomp>') or func_name.endswith('<genexpr>')):
+        # handling listcomp and genexpr
+        last_yield_value_id = find_last_yield_value_id(opcode_list, element)
+        edges.append([element['line'], f"<ITER> {last_yield_value_id}", f"v{element['ret'].id}"])
+    elif func_name is not None and func_name.endswith('<dictcomp>'):
+        # handling dictcomp
+        map_id = find_map_id(opcode_list, element)
+        for edge in edges:
+            if edge[2] == map_id:
+                edge[0] = element['line']
+                edge[2] = f"<DICT> v{element['ret'].id}"
+        edges.append([element['line'], f"<DICT> v{element['ret'].id}", f"v{element['ret'].id}"])
+    elif last_opcode['opcode'] == 'RETURN_VALUE' and last_opcode['value_data'] == element['ret'].data:
         for edge in edges:
             if edge[2] == last_opcode['value_id']:
-                edge[0] = element['line']
-                edge[2] = f"v{element['ret'].id}"
-    elif func_name is not None and (func_name.endswith('<listcomp>') or func_name.endswith('<genexpr>')):
-        # handling listcomp and genexpr
-        last_call_ret_id = find_last_func_call_ret_id(opcode_list, element)
-        for edge in edges:
-            if edge[2] == last_call_ret_id:
                 edge[0] = element['line']
                 edge[2] = f"v{element['ret'].id}"
     else:
@@ -394,6 +404,16 @@ def draw_type_inference_graph(opcode_list):
                     edge[0] = element['line']
                     edge[2] = f"<TUPLE> {tuple_str}"
             edges.append([element['line'], f"<TUPLE> {tuple_str}", element['value_id']])
+        elif element['opcode'] == 'YIELD_VALUE':
+            for edge in edges:
+                if edge[2] == element['yield_id']:
+                    edge[0] = element['line']
+                    edge[2] = f"<ITER> {element['send_id']}"
+        elif element['opcode'] == 'MAP_ADD':
+            for edge in edges:
+                if edge[2] == element['key_id'] or edge[2] == element['value_id']:
+                    edge[0] = element['line']
+                    edge[2] = element['map_id']
 
     edges_clean = clean_edges(edges)
     print('====edges====')
