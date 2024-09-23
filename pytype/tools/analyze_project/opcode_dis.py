@@ -62,13 +62,37 @@ def get_src_path():
 
 
 if __name__ == "__main__":
-    dataset_dir = "/Users/fuyingbo/Desktop/dataset"
-    opcode_counts = Counter()
+    percentage_list = []
     for src_path in get_src_path():
+        opcode_counts = Counter()
         all_files = get_all_files_recursively(src_path)
         for file in all_files:
             opcode_counts += count_opcodes_from_file(file)
 
-    # print(f"{src_path.split('---')[1].split('/')[0]}", end=', ')
-    for opcode, count in sorted(opcode_counts.items(), key=lambda item: item[1], reverse=True):
-        print(f"{opcode}: {round(count/opcode_counts.total()*100)}%")
+        total_count = sum(opcode_counts.values())
+        percentage_list.append({key: (value / total_count) * 100 for key, value in opcode_counts.items()})
+
+    total_percentage = {}
+    for d in percentage_list:
+        for key, value in d.items():
+            if key in total_percentage:
+                total_percentage[key] += value
+            else:
+                total_percentage[key] = value
+
+    num_dicts = len(percentage_list)
+    average_percentage = {key: total / num_dicts for key, total in total_percentage.items()}
+
+    finished_files = ['/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/str_convert.py',
+                      '/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/stringify.py',
+                      '/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/section.py']
+    finished_opcode_counts = Counter()
+    for finished_file in finished_files:
+        finished_opcode_counts += count_opcodes_from_file(finished_file)
+    print(f"{len(finished_opcode_counts)} finished opcodes")
+
+    total_perc = 0
+    for opcode, perc in sorted(average_percentage.items(), key=lambda item: item[1], reverse=True):
+        if opcode in finished_opcode_counts:
+            total_perc += perc
+    print(f"Total opcode percentage: {total_perc:.2f}")
