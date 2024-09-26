@@ -7,7 +7,7 @@ import os
 import sys
 import traceback
 from typing import Optional
-from pytype.tools.analyze_project.graph import draw_type_inference_graph, opcode_list
+from pytype.tools.analyze_project.graph import calc_ann_impact, opcode_list
 
 import libcst
 from pytype import __version__
@@ -83,7 +83,7 @@ def _call(analyze_types, src, options, loader):
   """Helper function to call analyze.check/infer_types."""
   loader = loader or load_pytd.create_loader(options)
   ret = analyze_types(src=src, options=options, loader=loader)
-  draw_type_inference_graph(opcode_list)
+  calc_ann_impact(opcode_list)
   return ret
 
 

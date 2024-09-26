@@ -25,7 +25,8 @@ def main():
   src1 = '/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/str_convert.py'
   src2 = '/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/stringify.py'
   src3 = '/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/section.py'
-  args = parser.parse_args([src2])
+  src4 = '/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/memory.py'
+  args = parser.parse_args([src1])
   if args.version:
     print(io.get_pytype_version())
     sys.exit(0)
