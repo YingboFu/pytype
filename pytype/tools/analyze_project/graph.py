@@ -355,13 +355,15 @@ def draw_type_inference_graph(opcode_list):
             call_opcode_handler(edges, element, opcode_list)
         elif element['opcode'] == 'APPEND':
             l = ''
+            l_data = ''
             new_item = ''
             for edge in edges:
                 if edge[3] == f"v{element['funcv'].id}":
                     l = edge[1]
+                    l_data = edge[2]
                 if edge[3] == f"v{element['posargs'][0].id}":
                     new_item = edge[1]
-            edges.append([element['line'], new_item, element['posargs'][0].data, l, element['funcv'].data])
+            edges.append([element['line'], new_item, element['posargs'][0].data, l, l_data])
         elif element['opcode'] == 'DICT_MERGE' or element['opcode'] == 'LIST_EXTEND':
             for edge in edges:
                 if edge[3] == element['update_id']:
