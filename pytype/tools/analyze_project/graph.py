@@ -1,7 +1,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 from pytype.abstract._classes import PyTDClass, ParameterizedClass, TupleClass
-from pytype.abstract._singletons import Unsolvable
+from pytype.abstract._singletons import Unsolvable, Unknown
 import re
 
 opcode_list = []  # recording all opcodes to draw the type inference graph
@@ -221,7 +221,7 @@ def get_tag(name_str):
     lidx = name_str.find('<')
     ridx = name_str.find('>')
     if lidx != -1 and ridx != -1:
-        return name_str[lidx + 1:ridx]
+        return name_str[lidx:ridx+1]
 
 def draw_type_inference_graph(opcode_list):
     opcode_list = _pre_process_opcodes(opcode_list)
@@ -479,27 +479,50 @@ def draw_type_inference_graph(opcode_list):
 def get_arguments(func_edge, edges):
     args = []
     for edge in edges:
-        if get_tag(edge[1]) == 'PARAM' and edge[3] == func_edge[3]:
-            args.append(strip_tag(edge[1]))
+        if get_tag(edge[1]) == '<PARAM>' and edge[3] == func_edge[3]:
+            args.append([strip_tag(edge[1]), edge[2]])
         else:
             return args
+
+def has_type(data):
+    return not isinstance(data[0], Unknown) and not isinstance(data[0], Unsolvable)
 
 
 def calc_ann_impact(opcode_list):
     impacted_terms = []
     edges = draw_type_inference_graph(opcode_list)
-    # slot = [43, '<TYPE> str', '<PARAM> value']
-    # impacted_terms.append(strip_tag(slot[2]))
-    # idx = edges.index(slot)
-    # for edge in edges[idx:]:
-    #     if get_tag(edge[1]) == '<IDENT>' and strip_tag(edge[1]) in impacted_terms:
-    #         impacted_terms.append(strip_tag(edge[2]))
-    #     elif get_tag(edge[1]) == '<FUNC>' and strip_tag(edge[1]) in impacted_terms:
-    #         args = get_arguments(edge, edges)
-    #         for arg in args:
-    #             if arg in impacted_terms
-
-
+    slot = [43, '<TYPE> str', 'str', '<PARAM> value', 'str']
+    impacted_terms.append(strip_tag(slot[3]))
+    idx = edges.index(slot)
+    for edge in edges[idx+1:]:
+        if edge[1] == '<FUNC> staticmethod':
+            cleaned_impacted_terms = [term for term in impacted_terms if get_tag(term) not in ['<ITER>', '<TUPLE>']]
+            print(cleaned_impacted_terms)
+            break
+        elif get_tag(edge[1]) == '<IDENT>' and strip_tag(edge[1]) in impacted_terms:
+            if strip_tag(edge[3]) not in impacted_terms:
+                impacted_terms.append(strip_tag(edge[3]))
+        elif get_tag(edge[1]) == '<FUNC>' and (strip_tag(edge[1]) in impacted_terms or has_type(edge[2])):
+            i = edges.index(edge)
+            args = get_arguments(edge, edges[i+1:])
+            fully_typed = True
+            for arg in args:
+                if arg[0] not in impacted_terms and not has_type(arg[1]):
+                    fully_typed = False
+            if fully_typed:
+                if get_tag(edge[3]) == '<ITER>' or get_tag(edge[3]) == '<TUPLE>':
+                    if edge[3] not in impacted_terms:
+                        impacted_terms.append(edge[3])
+                elif strip_tag(edge[3]) not in impacted_terms:
+                    impacted_terms.append(strip_tag(edge[3]))
+        elif get_tag(edge[1]) == '<ITER>' and (edge[1] in impacted_terms or has_type(edge[2])):
+            if strip_tag(edge[3]) not in impacted_terms:
+                impacted_terms.append(strip_tag(edge[3]))
+        elif get_tag(edge[1]) == '<TUPLE>' and (edge[1] in impacted_terms or has_type(edge[2])):
+            if get_tag(edge[3]) == '<ITER>':
+                impacted_terms.append(edge[3])
+            else:
+                impacted_terms.append(strip_tag(edge[3]))
 
     # try:
     #     G = nx.DiGraph()
