@@ -944,7 +944,7 @@ def check_for_deleted(state, name, var, ctx):
       ctx.errorlog.name_error(ctx.vm.frames, name, details=details)
 
 
-def load_closure_cell(state, op, check_bindings, ctx):
+def load_closure_cell(qualname, state, op, check_bindings, ctx):
   """Retrieve the value out of a closure cell.
 
   Used to generate the 'closure' tuple for MAKE_CLOSURE.
@@ -989,7 +989,7 @@ def load_closure_cell(state, op, check_bindings, ctx):
   ctx.vm.set_var_name(cell, name)
   check_for_deleted(state, name, cell, ctx)
   ctx.vm.trace_opcode(op, name, cell)
-  opcode_list.append({"line": op.line, "opcode": "LOAD_CLOSURE", "name": name, "value_data": cell.data, "value_id": f"v{cell.id}"})
+  opcode_list.append({"fullname": qualname, "line": op.line, "opcode": "LOAD_CLOSURE", "name": name, "value_data": cell.data, "value_id": f"v{cell.id}"})
   return state.push(cell)
 
 

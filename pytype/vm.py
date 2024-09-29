@@ -668,9 +668,10 @@ class VirtualMachine:
           state, name, x, y, report_errors=report_errors, ctx=self.ctx
       )
     line = find_op_in_callers().line if find_op_in_callers() is not None else -1
-    opcode_list.append({"line": line, "opcode": "BINARY_OP", "name": name, "x_id": f"v{x.bindings[0].variable.id}",
-                        "x_data": x.bindings[0].variable.data, "y_id": f"v{y.bindings[0].variable.id}",
-                        "y_data": y.bindings[0].variable.data, "ret_id": f"v{ret.id}", "ret_data": ret.data})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": line, "opcode": "BINARY_OP", "name": name,
+                        "x_id": f"v{x.bindings[0].variable.id}", "x_data": x.bindings[0].variable.data,
+                        "y_id": f"v{y.bindings[0].variable.id}", "y_data": y.bindings[0].variable.data,
+                        "ret_id": f"v{ret.id}", "ret_data": ret.data})
     self.trace_opcode(None, name, ret)
     return state.push(ret)
 
@@ -733,12 +734,21 @@ class VirtualMachine:
     # __setitem__(...) will be handled by STORE_SUBSCR, so we skip it here to avoid double handling
     line = find_op_in_callers().line if find_op_in_callers() is not None else -1
     if funcv.data[0].name == 'append':
-      opcode_list.append({"line": line, "opcode": "APPEND", "funcv": funcv, "posargs": posargs, "namedargs": namedargs,
-                          "starargs": starargs, "starstarargs": starstarargs, "ret": ret})
+      if self.frame.f_code is not None:
+        opcode_list.append({"fullname": self.frame.f_code.qualname, "line": line, "opcode": "APPEND", "funcv": funcv,
+                            "posargs": posargs, "namedargs": namedargs, "starargs": starargs,
+                            "starstarargs": starstarargs, "ret": ret})
+      else:
+        opcode_list.append({"line": line, "opcode": "APPEND", "funcv": funcv, "posargs": posargs, "namedargs": namedargs,
+                            "starargs": starargs, "starstarargs": starstarargs, "ret": ret})
     elif len(funcv.data) != 1 or funcv.data[0].name != '__setitem__':
-        opcode_list.append({"line": line, "opcode": "CALL", "funcv": funcv, "posargs": posargs, "namedargs": namedargs,
-                          "starargs": starargs, "starstarargs": starstarargs, "ret": ret})
-
+      if self.frame.f_code is not None:
+        opcode_list.append({"fullname": self.frame.f_code.qualname, "line": line, "opcode": "CALL", "funcv": funcv,
+                            "posargs": posargs, "namedargs": namedargs, "starargs": starargs, "starstarargs": starstarargs,
+                            "ret": ret})
+      else:
+        opcode_list.append({"line": line, "opcode": "CALL", "funcv": funcv, "posargs": posargs,"namedargs": namedargs,
+                            "starargs": starargs, "starstarargs": starstarargs, "ret": ret})
     if ret.data == [self.ctx.convert.never]:
       state = state.set_why("Never")
     state = state.change_cfg_node(node)
@@ -937,7 +947,8 @@ class VirtualMachine:
     const = self.ctx.convert.constant_to_var(raw_const, node=state.node)
     # if isinstance(raw_const, OrderedCode):
     #   show_ordered_code(raw_const)
-    opcode_list.append({"line": op.line, "opcode": "LOAD_CONST", "value_id": f"v{const.id}", "value_data": const.data, "raw_const": raw_const})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "LOAD_CONST",
+                        "value_id": f"v{const.id}", "value_data": const.data, "raw_const": raw_const})
     self.trace_opcode(op, raw_const, const)
     return state.push(const)
 
@@ -1101,9 +1112,11 @@ class VirtualMachine:
       value = self._get_value_from_annotations(state, op, name, local, orig_val)
     state = state.forward_cfg_node(f"Store:{name}")
     if op.annotation is not None:
-      opcode_list.append({"line": op.line, "opcode": "STORE_NAME", "name": name, "annotation": op.annotation})
+      opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "STORE_NAME", "name": name,
+                          "annotation": op.annotation})
     else:
-      opcode_list.append({"line": op.line, "opcode": "STORE_NAME", "name": name, "value_id": f"v{value.id}", "value_data": value.data})
+      opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "STORE_NAME", "name": name,
+                          "value_id": f"v{value.id}", "value_data": value.data})
     state = self._store_value(state, name, value, local)
     self.trace_opcode(op, name, value)
     return state
@@ -1637,7 +1650,8 @@ class VirtualMachine:
   def byte_LOAD_FOLDED_CONST(self, state, op):
     const = op.arg
     state, var = constant_folding.build_folded_type(self.ctx, state, const)
-    opcode_list.append({"line": op.line, "opcode": "LOAD_FOLDED_CONST", "value_id": f"v{var.id}", "value_data": var.data, "raw_const": str(const)})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "LOAD_FOLDED_CONST",
+                        "value_id": f"v{var.id}", "value_data": var.data, "raw_const": str(const)})
     return state.push(var)
 
   def byte_SETUP_EXCEPT_311(self, state, op):
@@ -1707,7 +1721,8 @@ class VirtualMachine:
           self.trace_opcode(op, name, None)
           return state.push(one_val.to_variable(state.node))
     vm_utils.check_for_deleted(state, name, val, self.ctx)
-    opcode_list.append({"line": op.line, "opcode": "LOAD_NAME", "value_id": f"v{val.id}", "value_data": val.data, "name": name})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "LOAD_NAME",
+                        "value_id": f"v{val.id}", "value_data": val.data, "name": name})
     self.trace_opcode(op, name, val)
     return state.push(val)
 
@@ -1739,7 +1754,8 @@ class VirtualMachine:
             state.node
         )
     vm_utils.check_for_deleted(state, name, val, self.ctx)
-    opcode_list.append({"line": op.line, "opcode": "LOAD_FAST", "value_id": f"v{val.id}", "value_data": val.data, "name": name})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "LOAD_FAST",
+                        "value_id": f"v{val.id}", "value_data": val.data, "name": name})
     self.trace_opcode(op, name, val)
     return state.push(val)
 
@@ -1787,7 +1803,8 @@ class VirtualMachine:
         ret = self._name_error_or_late_annotation(state, name)
         return state.push(ret.to_variable(state.node))
     vm_utils.check_for_deleted(state, name, val, self.ctx)
-    opcode_list.append({"line": op.line, "opcode": "LOAD_GLOBAL", "value_id": f"v{val.id}", "value_data": val.data, "name": name})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "LOAD_GLOBAL",
+                        "value_id": f"v{val.id}", "value_data": val.data, "name": name})
     self.trace_opcode(op, name, val)
     return state.push(val)
 
@@ -1801,11 +1818,11 @@ class VirtualMachine:
 
   def byte_LOAD_CLOSURE(self, state, op):
     """Retrieves a value out of a cell."""
-    return vm_utils.load_closure_cell(state, op, False, self.ctx)
+    return vm_utils.load_closure_cell(self.frame.f_code.qualname, state, op, False, self.ctx)
 
   def byte_LOAD_DEREF(self, state, op):
     """Retrieves a value out of a cell."""
-    return vm_utils.load_closure_cell(state, op, True, self.ctx)
+    return vm_utils.load_closure_cell(self.frame.f_code.qualname, state, op, True, self.ctx)
 
   def byte_STORE_DEREF(self, state, op):
     """Stores a value in a closure cell."""
@@ -1836,7 +1853,7 @@ class VirtualMachine:
       self.trace_opcode(op, name, val)
       return state.push(val)
     except KeyError:
-      return vm_utils.load_closure_cell(state, op, False, self.ctx)
+      return vm_utils.load_closure_cell(self.frame.f_code.qualname, state, op, False, self.ctx)
 
   def _cmp_rel(self, state, op_name, x, y):
     """Implementation of relational operators CMP_(LT|LE|EQ|NE|GE|GT).
@@ -2039,8 +2056,9 @@ class VirtualMachine:
           # This is an enum match
           name = case_val.name
         self.ctx.errorlog.redundant_match(self.frames, name)
-      opcode_list.append({"line": op.line, "opcode": "COMPARE_OP", "x_id": f"v{x.id}", "x_data": x.data,
-                          "y_id": f"v{y.id}", "y_data": y.data, "ret_id": f"v{ret.id}", "ret_data": ret.data})
+      opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "COMPARE_OP",
+                          "x_id": f"v{x.id}", "x_data": x.data, "y_id": f"v{y.id}", "y_data": y.data,
+                          "ret_id": f"v{ret.id}", "ret_data": ret.data})
       return state.push(ret)
 
     # Explicit, redundant, switch statement, to make it easier to address the
@@ -2080,8 +2098,9 @@ class VirtualMachine:
       # (https://docs.python.org/2/library/stdtypes.html#comparisons or
       # (https://docs.python.org/3/library/stdtypes.html#comparisons)
       ret.AddBinding(self.ctx.convert.primitive_instances[bool], [], state.node)
-    opcode_list.append({"line": op.line, "opcode": "COMPARE_OP", "x_id": f"v{x.id}", "x_data": x.data,
-                        "y_id": f"v{y.id}", "y_data": y.data, "ret_id": f"v{ret.id}", "ret_data": ret.data})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "COMPARE_OP",
+                        "x_id": f"v{x.id}", "x_data": x.data, "y_id": f"v{y.id}", "y_data": y.data,
+                        "ret_id": f"v{ret.id}", "ret_data": ret.data})
     return state.push(ret)
 
   def byte_COMPARE_OP(self, state, op):
@@ -2116,8 +2135,8 @@ class VirtualMachine:
       state = state.push(val)
     # We need to trace both the object and the attribute.
     self.trace_opcode(op, name, (obj, val))
-    opcode_list.append({"line": op.line, "opcode": "LOAD_ATTR", "name": name, "obj_id": f"v{obj.id}", "obj_data": obj.data,
-                        "value_id": f"v{val.id}", "value_data": val.data})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "LOAD_ATTR", "name": name,
+                        "obj_id": f"v{obj.id}", "obj_data": obj.data, "value_id": f"v{val.id}", "value_data": val.data})
     return state
 
   def _get_type_of_attr_to_store(self, node, op, obj, name):
@@ -2205,8 +2224,9 @@ class VirtualMachine:
     )
     state = state.forward_cfg_node(f"StoreAttr:{name}")
     state = self.store_attr(state, obj, name, val)
-    opcode_list.append({"line": op.line, "opcode": "STORE_ATTR", "name": name, "obj_id": f"v{obj.id}",
-                        "obj_data": f"v{obj.data}", "val_id": f"v{val.id}", "val_data": f"v{val.data}"})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "STORE_ATTR", "name": name,
+                        "obj_id": f"v{obj.id}", "obj_data": f"v{obj.data}",
+                        "val_id": f"v{val.id}", "val_data": f"v{val.data}"})
     # We need to trace both the object and the attribute.
     self.trace_opcode(op, name, (obj, val))
     return state
@@ -2219,9 +2239,9 @@ class VirtualMachine:
   def store_subscr(self, state, obj, key, val):
     state, _ = self._call(state, obj, "__setitem__", (key, val))
     line = find_op_in_callers().line if find_op_in_callers() is not None else -1
-    opcode_list.append({"line": line, "opcode": "STORE_SUBSCR", "obj_id": f"v{obj.id}", "obj_data": obj.data,
-                        "key_id": f"v{key.id}", "key_data": key.data, "value_id": f"v{val.id}",
-                        "value_data": val.data})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": line, "opcode": "STORE_SUBSCR",
+                        "obj_id": f"v{obj.id}", "obj_data": obj.data, "key_id": f"v{key.id}", "key_data": key.data,
+                        "value_id": f"v{val.id}", "value_data": val.data})
     return state
 
   def _record_annotation_dict_store(self, state, obj, subscr, val, op):
@@ -2264,7 +2284,8 @@ class VirtualMachine:
     count = op.arg
     state, elts = state.popn(count)
     value = self.ctx.convert.build_tuple(state.node, elts)
-    opcode_list.append({"line": op.line, "opcode": "BUILD_TUPLE", "elts": elts, "value_data": value.data, "value_id": f"v{value.id}"})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "BUILD_TUPLE",
+                        "elts": elts, "value_data": value.data, "value_id": f"v{value.id}"})
     return state.push(value)
 
   def byte_BUILD_LIST(self, state, op):
@@ -2391,7 +2412,8 @@ class VirtualMachine:
       vals.append(value)
       state = state.push(value)
     line = find_op_in_callers().line if find_op_in_callers() is not None else -1
-    opcode_list.append({'line': line, 'opcode': 'UNPACK_SEQUENCE', 'seq_id': f'v{seq.id}', 'seq_data': seq.data, 'values': vals})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, 'line': line, 'opcode': 'UNPACK_SEQUENCE',
+                        'seq_id': f'v{seq.id}', 'seq_data': seq.data, 'values': vals})
     return state
 
   def byte_UNPACK_SEQUENCE(self, state, op):
@@ -2406,14 +2428,14 @@ class VirtualMachine:
     if op.arg == 2:
       state, (x, y) = state.popn(2)
       sli =  self.ctx.convert.build_slice(state.node, x, y)
-      opcode_list.append({"line": op.line, 'opcode': 'BUILD_SLICE', 'start_id': f'v{x.id}', 'stop_id': f'v{y.id}',
-                          'ret_id': f'v{sli.id}'})
+      opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, 'opcode': 'BUILD_SLICE',
+                          'start_id': f'v{x.id}', 'stop_id': f'v{y.id}', 'ret_id': f'v{sli.id}'})
       return state.push(sli)
     elif op.arg == 3:
       state, (x, y, z) = state.popn(3)
       sli = self.ctx.convert.build_slice(state.node, x, y, z)
-      opcode_list.append({"line": op.line, 'opcode': 'BUILD_SLICE', 'start_id': f'v{x.id}', 'stop_id': f'v{y.id}', 'step_id': f'v{z.id}',
-                          'ret_id': f'v{sli.id}'})
+      opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, 'opcode': 'BUILD_SLICE',
+                          'start_id': f'v{x.id}', 'stop_id': f'v{y.id}', 'step_id': f'v{z.id}', 'ret_id': f'v{sli.id}'})
       return state.push(sli)
     else:  # pragma: no cover
       raise VirtualMachineError(f"Strange BUILD_SLICE count: {op.arg!r}")
@@ -2430,8 +2452,9 @@ class VirtualMachine:
     """Pops top-of-stack and uses it to extend the list at stack[op.arg]."""
     state, update = state.pop()
     target = state.peek(op.arg)
-    opcode_list.append({"line": op.line, "opcode": "LIST_EXTEND", "update_id": f"v{update.id}",
-                        "update_data": update.data, "target_id": f"v{target.id}", "target_data": target.data})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "LIST_EXTEND",
+                        "update_id": f"v{update.id}", "update_data": update.data,
+                        "target_id": f"v{target.id}", "target_data": target.data})
     if not all(abstract_utils.is_concrete_list(v) for v in target.data):
       state, _ = self._call(state, target, "extend", (update,))
       return state
@@ -2505,9 +2528,10 @@ class VirtualMachine:
     key, val = item
     the_map = state.peek(count)
     state, _ = self._call(state, the_map, "__setitem__", (key, val))
-    opcode_list.append(
-      {"line": op.line, "opcode": "MAP_ADD", "map_id": f"v{the_map.id}", "map_data": the_map.data,
-       "key_id": f"v{key.id}", "key_data": key.data, "value_id": f"v{val.id}", "value_data": val.data})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "MAP_ADD",
+                        "map_id": f"v{the_map.id}", "map_data": the_map.data,
+                        "key_id": f"v{key.id}", "key_data": key.data,
+                        "value_id": f"v{val.id}", "value_data": val.data})
     return state
 
   def byte_DICT_MERGE(self, state, op):
@@ -2518,7 +2542,8 @@ class VirtualMachine:
     """Pops top-of-stack and uses it to update the dict at stack[op.arg]."""
     state, update = state.pop()
     target = state.peek(op.arg)
-    opcode_list.append({"line": op.line, "opcode": "DICT_MERGE", "update_id": f"v{update.id}", "update_data": update.data,
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "DICT_MERGE",
+                        "update_id": f"v{update.id}", "update_data": update.data,
                         "target_id": f"v{target.id}", "target_data": target.data})
 
     def pytd_update(state):
@@ -2612,8 +2637,8 @@ class VirtualMachine:
     """Get the iterator for an object."""
     state, seq = state.pop()
     state, itr = self._get_iter(state, seq)
-    opcode_list.append({"line": op.line, 'opcode': 'GET_ITER', 'seq_id': f'v{seq.id}', 'seq_data': seq.data,
-                        'itr_id': f'v{itr.id}', 'itr_data': itr.data})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, 'opcode': 'GET_ITER',
+                        'seq_id': f'v{seq.id}', 'seq_data': seq.data, 'itr_id': f'v{itr.id}', 'itr_data': itr.data})
     # Push the iterator onto the stack and return.
     return state.push(itr)
 
@@ -2645,7 +2670,8 @@ class VirtualMachine:
     # the double-pop of END_FOR is not needed.
     self.store_jump(op.target, state.pop_and_discard())
     state, f = self.load_attr(state, state.top(), "__next__")
-    opcode_list.append({"line": op.line, 'opcode': 'FOR_ITER', 'iter_id': f"v{state.top().id}", 'iter_data': state.top().data,
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, 'opcode': 'FOR_ITER',
+                        'iter_id': f"v{state.top().id}", 'iter_data': state.top().data,
                         'func_id': f"v{f.id}", 'func_data': f.data})
     state = state.push(f)
     return self.call_function_from_stack(state, 0, None, None)
@@ -2908,7 +2934,8 @@ class VirtualMachine:
     func.decorators = self._director.decorators[op.line]
     func.cache_return = self._director.has_pragma("cache-return", op.line)
     vm_utils.process_function_type_comment(state.node, op, func, self.ctx)
-    opcode_list.append({"line": op.line, 'opcode': 'MAKE_FUNCTION', 'func_name': func.name, 'func_var': func_var, 'annot': raw_annot})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, 'opcode': 'MAKE_FUNCTION',
+                        'func_name': func.name, 'func_var': func_var, 'annot': raw_annot})
     self.trace_opcode(op, func.name, func_var)
     self.trace_functiondef(func_var)
     return state.push(func_var)
@@ -3001,7 +3028,8 @@ class VirtualMachine:
       send_var = self.init_class(state.node, send_type)
     else:
       send_var = self.ctx.new_unsolvable(state.node)
-    opcode_list.append({"line": op.line, 'opcode': 'YIELD_VALUE', 'yield_id': f'v{yield_value.id}', 'yield_data': yield_value.data,
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, 'opcode': 'YIELD_VALUE',
+                        'yield_id': f'v{yield_value.id}', 'yield_data': yield_value.data,
                         'send_id': f'v{send_var.id}', 'send_data': send_var.data})
     return state.push(send_var)
 
@@ -3105,7 +3133,8 @@ class VirtualMachine:
 
   def byte_RETURN_VALUE(self, state, op):
     state, var = state.pop()
-    opcode_list.append({"line": op.line, 'opcode': 'RETURN_VALUE', 'value_id': f'v{var.id}', 'value_data': var.data, 'state_node_name': state.node.name})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, 'opcode': 'RETURN_VALUE',
+                        'value_id': f'v{var.id}', 'value_data': var.data, 'state_node_name': state.node.name})
     return self._return_value(state, var)
 
   def byte_RETURN_CONST(self, state, op):
@@ -3276,7 +3305,8 @@ class VirtualMachine:
     state, _ = state.popn(op.arg)
     ret = abstract.Instance(self.ctx.convert.str_type, self.ctx)
     var = ret.to_variable(state.node)
-    opcode_list.append({"line": op.line, "opcode": "BUILD_STRING", "val_id": f"v{var.id}", "val_data": var.data})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "BUILD_STRING",
+                        "val_id": f"v{var.id}", "val_data": var.data})
     return state.push(var)
 
   def byte_GET_AITER(self, state, op):
@@ -3388,7 +3418,7 @@ class VirtualMachine:
     name = op.argval
     state, self_obj = state.pop()
     state, method = self._load_method(state, self_obj, name)
-    opcode_list.append({"line": op.line, "opcode": "LOAD_METHOD", "name": name, "obj_id": f"v{self_obj.id}", "obj_data": self_obj.data,
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "LOAD_METHOD", "name": name, "obj_id": f"v{self_obj.id}", "obj_data": self_obj.data,
                         "value_id": f"v{method.id}", "value_data": method.data})
     self.trace_opcode(op, name, (self_obj, method))
     return state
@@ -3768,7 +3798,7 @@ class VirtualMachine:
 
   def byte_RESUME(self, state, op):
     # No stack or type effects
-    opcode_list.append({"line": op.line, "opcode": "RESUME", 'state_node_name': state.node.name})
+    opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "opcode": "RESUME", 'state_node_name': state.node.name})
     del op
     return state
 

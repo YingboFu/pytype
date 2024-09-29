@@ -14,7 +14,7 @@ def clean_edges(edges):
             continue
         if edge[3][0] == 'v' and edge[3][1:].isdigit():
             continue
-        if strip_tag(edge[3]) == '__qualname__' or strip_tag(edge[3]) == '__doc__' or strip_tag(edge[3]) == '__module__' or strip_tag(edge[1]) == strip_tag(edge[3]):
+        if strip_tag(edge[3]).endswith('__qualname__') or strip_tag(edge[3]).endswith('__doc__') or strip_tag(edge[3]).endswith('__module__') or strip_tag(edge[1]) == strip_tag(edge[3]):
             continue
         if edge in ret:
             continue
@@ -56,19 +56,19 @@ def find_obj_name_via_id_SUBSCR(opcode_list, element, edges):
         if opcode_list[i]['opcode'] == 'BINARY_OP' and opcode_list[i]['ret_id'] == element['obj_id']:
             for edge in edges:
                 if edge[3] == opcode_list[i]['ret_id']:
-                    obj_name = strip_tag(edge[1])
+                    obj_name = strip_tag(edge[1]).replace(element['fullname']+'.', '')
         elif opcode_list[i]['opcode'] == 'CALL' and f"v{opcode_list[i]['ret'].id}" == element['obj_id']:
             for edge in edges:
                 if edge[3] == f"v{opcode_list[i]['ret'].id}":
                     if obj_name == '':
-                        obj_name = f"{strip_tag(edge[1])}()"
+                        obj_name = f"{strip_tag(edge[1]).replace(element['fullname']+'.', '')}()"
                     else:
                         ridx = obj_name.rfind(')')
                         if ridx != -1:
                             if obj_name[ridx - 1] == '(':
-                                obj_name = obj_name[:ridx] + f"{strip_tag(edge[1])}" + obj_name[ridx:]
+                                obj_name = obj_name[:ridx] + f"{strip_tag(edge[1]).replace(element['fullname']+'.', '')}" + obj_name[ridx:]
                             else:
-                                obj_name = obj_name[:ridx] + f",{strip_tag(edge[1])}" + obj_name[ridx:]
+                                obj_name = obj_name[:ridx] + f",{strip_tag(edge[1]).replace(element['fullname']+'.', '')}" + obj_name[ridx:]
         elif ((opcode_list[i]['opcode'] == 'LOAD_CONST' or opcode_list[i]['opcode'] == 'LOAD_FAST'
              or opcode_list[i]['opcode'] == 'LOAD_NAME' or opcode_list[i]['opcode'] == 'LOAD_FOLDED_CONST'
              or opcode_list[i]['opcode'] == 'LOAD_GLOBAL' or opcode_list[i]['opcode'] == 'LOAD_CLOSURE')
@@ -85,7 +85,7 @@ def find_obj_name_via_id_SUBSCR(opcode_list, element, edges):
               and opcode_list[i]['value_id'] == element['obj_id']):
             for edge in edges:
                 if edge[3] ==opcode_list[i]['value_id']:
-                    obj_name = strip_tag(edge[1])
+                    obj_name = strip_tag(edge[1]).replace(element['fullname']+'.', '')
     return obj_name
 
 def find_func_name(opcode_list, element):
@@ -188,9 +188,9 @@ def _store_fast(opcode_list, element, edges):
                 if edge[3] == opcode_list[i]['value_id']:
                     edge[0] = element['line']
                     if element['name'] == 'self':
-                        edge[3] = f"<IDENT> {element['value_data'][0].name}"
+                        edge[3] = f"<IDENT> {element['fullname']}.{element['value_data'][0].name}"
                     else:
-                        edge[3] = f"<IDENT> {element['name']}"
+                        edge[3] = f"<IDENT> {element['fullname']}.{element['name']}"
                     edge[4] = element['value_data']
             break
 
@@ -234,7 +234,7 @@ def draw_type_inference_graph(opcode_list):
         if element['opcode'] == 'LOAD_CONST':
             edges.append([element['line'], f"<CONST> {element['raw_const']}", element['value_data'], element['value_id'], element['value_data']])
         elif element['opcode'] == 'LOAD_NAME' or element['opcode'] == 'LOAD_GLOBAL' or element['opcode'] == 'LOAD_CLOSURE':
-            edges.append([element['line'], f"<IDENT> {element['name']}", element['value_data'], element['value_id'], element['value_data']])
+            edges.append([element['line'], f"<IDENT> {element['fullname']}.{element['name']}", element['value_data'], element['value_id'], element['value_data']])
         elif element['opcode'] == 'LOAD_FAST':
             if re.fullmatch(r"\.\d+", element['name']):
                 # Variables with a ".n" naming scheme are things like iterators for list comprehensions
@@ -249,14 +249,14 @@ def draw_type_inference_graph(opcode_list):
             else:
                 exist = False
                 for edge in edges:
-                    if strip_tag(edge[3]) == element['name']:
+                    if strip_tag(edge[3]) == f"{element['fullname']}.{element['name']}":
                         exist = True
                 if not exist:
                     _store_fast(opcode_list, element, edges)
                 if element['name'] == 'self':
-                    edges.append([element['line'], f"<IDENT> {element['value_data'][0].name}", element['value_data'], element['value_id'], element['value_data']])
+                    edges.append([element['line'], f"<IDENT> {element['fullname']}.{element['value_data'][0].name}", element['value_data'], element['value_id'], element['value_data']])
                 else:
-                    edges.append([element['line'], f"<IDENT> {element['name']}", element['value_data'], element['value_id'], element['value_data']])
+                    edges.append([element['line'], f"<IDENT> {element['fullname']}.{element['name']}", element['value_data'], element['value_id'], element['value_data']])
         elif element['opcode'] == 'LOAD_FOLDED_CONST':
             edges.append([element['line'], f"<CONST> {element['raw_const']}", element['value_data'], element['value_id'], element['value_data']])
         elif element['opcode'] == 'BINARY_OP':
@@ -269,26 +269,26 @@ def draw_type_inference_graph(opcode_list):
                     if edge[3] == element['x_id']:
                         if x_name == '':
                             if edge[1].startswith('<FUNC>'):
-                                x_name = f"{strip_tag(edge[1])}()"
+                                x_name = f"{strip_tag(edge[1]).replace(element['fullname']+'.', '')}()"
                             else:
-                                x_name = strip_tag(edge[1])
+                                x_name = strip_tag(edge[1]).replace(element['fullname']+'.', '')
                         else:
                             if edge[1].startswith('<PARAM>'):
                                 ridx = x_name.rfind(')')
                                 if ridx != -1:
                                     if x_name[ridx - 1] == '(':
-                                        x_name = x_name[:ridx] + f"{strip_tag(edge[1])}" + x_name[ridx:]
+                                        x_name = x_name[:ridx] + f"{strip_tag(edge[1]).replace(element['fullname']+'.', '')}" + x_name[ridx:]
                                     else:
-                                        x_name = x_name[:ridx] + f", {strip_tag(edge[1])}" + x_name[ridx:]
+                                        x_name = x_name[:ridx] + f", {strip_tag(edge[1]).replace(element['fullname']+'.', '')}" + x_name[ridx:]
                     if edge[3] == element['y_id']:
-                        y_name = strip_tag(edge[1])
+                        y_name = strip_tag(edge[1]).replace(element['fullname']+'.', '')
                 if y_name != '':
                     for edge in edges:
                         if edge[3] == element['x_id'] or edge[3] == element['y_id']:
                             edge[0] = element['line']
-                            edge[3] = f"<IDENT> {x_name}[{y_name}]"
+                            edge[3] = f"<IDENT> {element['fullname']}.{x_name}[{y_name}]"
                             edge[4] = element['ret_data']
-                    edges.append([element['line'], f"<IDENT> {x_name}[{y_name}]", element['ret_data'], element['ret_id'], element['ret_data']])
+                    edges.append([element['line'], f"<IDENT> {element['fullname']}.{x_name}[{y_name}]", element['ret_data'], element['ret_id'], element['ret_data']])
                 else:
                     for edge in edges:
                         if edge[3] == element['x_id'] or edge[3] == element['y_id']:
@@ -306,13 +306,13 @@ def draw_type_inference_graph(opcode_list):
                 if strip_tag(edges[-1][3]) == 'return':
                     edges[-1][0] = element['line']
                     edges[-1][3] = 'v0'
-                edges.append([element['line'], f"<TYPE> {element['annotation']}", element['annotation'], f"<IDENT> {element['name']}", element['annotation']])
+                edges.append([element['line'], f"<TYPE> {element['annotation']}", element['annotation'], f"<IDENT> {element['fullname']}.{element['name']}", element['annotation']])
             else:
                 found = False
                 for edge in edges:
                     if edge[3] == element['value_id']:
                         edge[0] = element['line']
-                        edge[3] = f"<IDENT> {element['name']}"
+                        edge[3] = f"<IDENT> {element['fullname']}.{element['name']}"
                         edge[4] = element['value_data']
                         found = True
                 if not found:
@@ -323,7 +323,7 @@ def draw_type_inference_graph(opcode_list):
                 if edge[3] == element['key_id'] or edge[3] == element['value_id']:
                     edge[0] = element['line']
                     if obj_name != '':
-                        edge[3] = f"<IDENT> {obj_name}"
+                        edge[3] = f"<IDENT> {element['fullname']}.{obj_name}"
                     else:
                         edge[3] = element['obj_id']
                     edge[4] = element['obj_data']
@@ -332,25 +332,25 @@ def draw_type_inference_graph(opcode_list):
             for edge in edges:
                 if edge[3] == element['val_id']:
                     edge[0] = element['line']
-                    edge[3] = f"<IDENT> {obj_name}.{element['name']}"
+                    edge[3] = f"<IDENT> {element['fullname']}.{obj_name}.{element['name']}"
                     edge[4] = element['val_data']
         elif element['opcode'] == 'LOAD_ATTR' or element['opcode'] == 'LOAD_METHOD':
             obj_name = find_obj_name_via_id_SUBSCR(opcode_list, element, edges)
             if obj_name == '':
                 obj_name = find_obj_name_via_data(opcode_list, element)
             if element['name'] == 'append':
-                edges.append([element['line'], f"<IDENT> {obj_name}", element['obj_data'], element['value_id'], element['value_data']])
+                edges.append([element['line'], f"<IDENT> {element['fullname']}.{obj_name}", element['obj_data'], element['value_id'], element['value_data']])
             else:
                 found = False
                 for edge in edges:
                     if edge[3] == element['obj_id']:
                         edge[0] = element['line']
-                        edge[3] = f"<IDENT> {obj_name}.{element['name']}"
+                        edge[3] = f"<IDENT> {element['fullname']}.{obj_name}.{element['name']}"
                         edge[4] = element['value_data']
                         found = True
                 if not found:
-                    edges.append([element['line'], f"<IDENT> {obj_name}", element['obj_data'], f"<IDENT> {obj_name}.{element['name']}", element['value_data']])
-                edges.append([element['line'], f"<IDENT> {obj_name}.{element['name']}", element['value_data'], element['value_id'], element['value_data']])
+                    edges.append([element['line'], f"<IDENT> {element['fullname']}.{obj_name}", element['obj_data'], f"<IDENT> {element['fullname']}.{obj_name}.{element['name']}", element['value_data']])
+                edges.append([element['line'], f"<IDENT> {element['fullname']}.{obj_name}.{element['name']}", element['value_data'], element['value_id'], element['value_data']])
         elif element['opcode'] == 'CALL':
             call_opcode_handler(edges, element, opcode_list)
         elif element['opcode'] == 'APPEND':
@@ -400,15 +400,15 @@ def draw_type_inference_graph(opcode_list):
                         ridx = repr(ann).rfind("'")
                         ann_str = repr(ann)[lidx + 1: ridx]
                         if k != 'return':
-                            edges.append([opcode['line'], f"<TYPE> {ann_str}", ann_str, f"<PARAM> {k}", ann_str])
+                            edges.append([opcode['line'], f"<TYPE> {ann_str}", ann_str, f"<PARAM> {element['fullname']}.{k}", ann_str])
                         else:
-                            edges.append([opcode['line'], f"<TYPE> {ann_str}", ann_str, f"<RET> {k}", ann_str])
+                            edges.append([opcode['line'], f"<TYPE> {ann_str}", ann_str, f"<RET> {element['fullname']}.{k}", ann_str])
         elif element['opcode'] == 'RETURN_VALUE':
             if element['state_node_name'].startswith('Function:') or element['state_node_name'].startswith('Method:'):
                 for edge in edges:
                     if edge[3] == element['value_id']:
                         edge[0] = element['line']
-                        edge[3] = '<RET> return'
+                        edge[3] = f"<RET> {element['fullname']}.return"
                         edge[4] = element['value_data']
             else:
                 if opcode_list.index(element) + 2 < len(opcode_list):
@@ -418,7 +418,7 @@ def draw_type_inference_graph(opcode_list):
                         for edge in edges:
                             if edge[3] == element['value_id']:
                                 edge[0] = element['line']
-                                edge[3] = '<RET> return'
+                                edge[3] = f"<RET> {element['fullname']}.return"
                                 edge[4] = element['value_data']
         elif element['opcode'] == 'COMPARE_OP':
             for edge in edges:
@@ -435,27 +435,27 @@ def draw_type_inference_graph(opcode_list):
                 if edge[3] in elt_ids:
                     if tuple_str == '':
                         if edge[1].startswith('<FUNC>'):
-                            tuple_str = f"{strip_tag(edge[1])}()"
+                            tuple_str = f"{strip_tag(edge[1]).replace(element['fullname']+'.', '')}()"
                         else:
-                            tuple_str = strip_tag(edge[1])
+                            tuple_str = strip_tag(edge[1]).replace(element['fullname']+'.', '')
                     else:
                         if edge[1].startswith('<FUNC>'):
-                            tuple_str = tuple_str + ", " + f"{strip_tag(edge[1])}()"
+                            tuple_str = tuple_str + ", " + f"{strip_tag(edge[1]).replace(element['fullname']+'.', '')}()"
                         elif edge[1].startswith('<PARAM>'):
                             ridx = tuple_str.rfind(')')
                             if ridx != -1:
                                 if tuple_str[ridx - 1] == '(':
-                                    tuple_str = tuple_str[:ridx] + f"{strip_tag(edge[1])}" + tuple_str[ridx:]
+                                    tuple_str = tuple_str[:ridx] + f"{strip_tag(edge[1]).replace(element['fullname']+'.', '')}" + tuple_str[ridx:]
                                 else:
-                                    tuple_str = tuple_str[:ridx] + f", {strip_tag(edge[1])}" + tuple_str[ridx:]
+                                    tuple_str = tuple_str[:ridx] + f", {strip_tag(edge[1]).replace(element['fullname']+'.', '')}" + tuple_str[ridx:]
                         else:
-                            tuple_str = tuple_str + ", " + strip_tag(edge[1])
+                            tuple_str = tuple_str + ", " + strip_tag(edge[1]).replace(element['fullname']+'.', '')
             for edge in edges:
                 if edge[3] in elt_ids:
                     edge[0] = element['line']
-                    edge[3] = f"<TUPLE> {tuple_str}"
+                    edge[3] = f"<TUPLE> {element['fullname']}.{tuple_str}"
                     edge[4] = element['value_data']
-            edges.append([element['line'], f"<TUPLE> {tuple_str}", element['value_data'], element['value_id'], element['value_data']])
+            edges.append([element['line'], f"<TUPLE> {element['fullname']}.{tuple_str}", element['value_data'], element['value_id'], element['value_data']])
         elif element['opcode'] == 'YIELD_VALUE':
             for edge in edges:
                 if edge[3] == element['yield_id']:
