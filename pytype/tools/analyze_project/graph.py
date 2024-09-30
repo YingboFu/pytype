@@ -491,38 +491,44 @@ def has_type(data):
 def calc_ann_impact(opcode_list):
     impacted_terms = []
     edges = draw_type_inference_graph(opcode_list)
-    slot = [43, '<TYPE> str', 'str', '<PARAM> value', 'str']
-    impacted_terms.append(strip_tag(slot[3]))
-    idx = edges.index(slot)
-    for edge in edges[idx+1:]:
-        if edge[1] == '<FUNC> staticmethod':
-            cleaned_impacted_terms = [term for term in impacted_terms if get_tag(term) not in ['<ITER>', '<TUPLE>']]
-            print(cleaned_impacted_terms)
-            break
-        elif get_tag(edge[1]) == '<IDENT>' and strip_tag(edge[1]) in impacted_terms:
+    slot = 'StrConvert.to_dict.return'
+    impacted_terms.append(slot)
+    for edge in edges:
+        if get_tag(edge[1]) == '<IDENT>' and strip_tag(edge[1]) in impacted_terms:
             if strip_tag(edge[3]) not in impacted_terms:
                 impacted_terms.append(strip_tag(edge[3]))
-        elif get_tag(edge[1]) == '<FUNC>' and (strip_tag(edge[1]) in impacted_terms or has_type(edge[2])):
+        elif get_tag(edge[1]) == '<FUNC>':
+            newly_reached = False
+            fully_typed = True
+            if strip_tag(edge[1]) in impacted_terms:
+                newly_reached = True
+            elif not has_type(edge[2]):
+                continue
             i = edges.index(edge)
             args = get_arguments(edge, edges[i+1:])
-            fully_typed = True
             for arg in args:
-                if arg[0] not in impacted_terms and not has_type(arg[1]):
+                if arg[0] in impacted_terms:
+                    newly_reached = True
+                elif not has_type(arg[1]):
                     fully_typed = False
-            if fully_typed:
+            if fully_typed and newly_reached:
                 if get_tag(edge[3]) == '<ITER>' or get_tag(edge[3]) == '<TUPLE>':
                     if edge[3] not in impacted_terms:
                         impacted_terms.append(edge[3])
                 elif strip_tag(edge[3]) not in impacted_terms:
                     impacted_terms.append(strip_tag(edge[3]))
-        elif get_tag(edge[1]) == '<ITER>' and (edge[1] in impacted_terms or has_type(edge[2])):
+        elif get_tag(edge[1]) == '<ITER>' and edge[1] in impacted_terms:
             if strip_tag(edge[3]) not in impacted_terms:
                 impacted_terms.append(strip_tag(edge[3]))
-        elif get_tag(edge[1]) == '<TUPLE>' and (edge[1] in impacted_terms or has_type(edge[2])):
+        elif get_tag(edge[1]) == '<TUPLE>' and edge[1] in impacted_terms:
             if get_tag(edge[3]) == '<ITER>':
                 impacted_terms.append(edge[3])
             else:
                 impacted_terms.append(strip_tag(edge[3]))
+
+    cleaned_impacted_terms = [term for term in impacted_terms if get_tag(term) not in ['<ITER>', '<TUPLE>']
+                              and term != slot]
+    print(cleaned_impacted_terms)
 
     # try:
     #     G = nx.DiGraph()
