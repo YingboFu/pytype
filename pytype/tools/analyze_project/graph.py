@@ -476,59 +476,71 @@ def draw_type_inference_graph(opcode_list):
     print('====edges====')
     return sorted(edges_clean, key=lambda x: x[0])
 
-def get_arguments(func_edge, edges):
-    args = []
-    for edge in edges:
-        if get_tag(edge[1]) == '<PARAM>' and edge[3] == func_edge[3]:
-            args.append([strip_tag(edge[1]), edge[2]])
-        else:
-            return args
-
 def has_type(data):
     return not isinstance(data[0], Unknown) and not isinstance(data[0], Unsolvable)
 
+def solving_funcs(result, unsolved_funcs, impacted_terms):
+    newly_reached = False
+    fully_typed = True
+    for name, type in unsolved_funcs[result]:
+        if name in impacted_terms:
+            newly_reached = True
+        elif not has_type(type):
+            fully_typed = False
+    if fully_typed and newly_reached and result not in impacted_terms:
+        impacted_terms.append(result)
 
 def calc_ann_impact(opcode_list):
-    impacted_terms = []
     edges = draw_type_inference_graph(opcode_list)
-    slot = 'StrConvert.to_dict.return'
-    impacted_terms.append(slot)
-    for edge in edges:
-        if get_tag(edge[1]) == '<IDENT>' and strip_tag(edge[1]) in impacted_terms:
-            if strip_tag(edge[3]) not in impacted_terms:
-                impacted_terms.append(strip_tag(edge[3]))
-        elif get_tag(edge[1]) == '<FUNC>':
-            newly_reached = False
-            fully_typed = True
-            if strip_tag(edge[1]) in impacted_terms:
-                newly_reached = True
-            elif not has_type(edge[2]):
-                continue
-            i = edges.index(edge)
-            args = get_arguments(edge, edges[i+1:])
-            for arg in args:
-                if arg[0] in impacted_terms:
-                    newly_reached = True
-                elif not has_type(arg[1]):
-                    fully_typed = False
-            if fully_typed and newly_reached:
-                if get_tag(edge[3]) == '<ITER>' or get_tag(edge[3]) == '<TUPLE>':
-                    if edge[3] not in impacted_terms:
-                        impacted_terms.append(edge[3])
-                elif strip_tag(edge[3]) not in impacted_terms:
-                    impacted_terms.append(strip_tag(edge[3]))
-        elif get_tag(edge[1]) == '<ITER>' and edge[1] in impacted_terms:
-            if strip_tag(edge[3]) not in impacted_terms:
-                impacted_terms.append(strip_tag(edge[3]))
-        elif get_tag(edge[1]) == '<TUPLE>' and edge[1] in impacted_terms:
-            if get_tag(edge[3]) == '<ITER>':
-                impacted_terms.append(edge[3])
-            else:
-                impacted_terms.append(strip_tag(edge[3]))
+    slots = [(43, 'StrConvert.to_dict.value'),
+             (43, 'StrConvert.to_dict.of_type'),
+             (43, 'StrConvert.to_dict.return'),
+             (50, 'StrConvert.to_dict.msg'),
+             (54, 'StrConvert._win32_process_path_backslash.value'),
+             (54, 'StrConvert._win32_process_path_backslash.escape'),
+             (54, 'StrConvert._win32_process_path_backslash.special_chars'),
+             (54, 'StrConvert._win32_process_path_backslash.return'),
+             (61, 'StrConvert._win32_process_path_backslash.result'),
+             (65, 'StrConvert._win32_process_path_backslash.last_char'),
+             (68, 'StrConvert._win32_process_path_backslash.next_char'),
+             (74, 'StrConvert.to_command.value'),
+             (74, 'StrConvert.to_command.return'),
+             (80, 'StrConvert.to_command.value'),
+             (81, 'StrConvert.to_command.is_win'),
+             (83, 'StrConvert.to_command.s'),
+             (84, 'StrConvert.to_command.value'),
+             (89, 'StrConvert.to_command.splitter'),
+             (92, 'StrConvert.to_command.args'),
+             (93, 'StrConvert.to_command.pos'),
+             (98, 'StrConvert.to_command.arg'),
+             (100, 'StrConvert.to_command.pos'),
+             (104, 'StrConvert.to_command.msg'),
+             (107, 'StrConvert.to_command.args[0]'),
+             (108, 'StrConvert.to_command.args'),
+             (112, 'StrConvert.to_env_list.value'),
+             (112, 'StrConvert.to_env_list.return'),
+             (115, 'StrConvert.to_env_list.elements')]
 
-    cleaned_impacted_terms = [term for term in impacted_terms if get_tag(term) not in ['<ITER>', '<TUPLE>']
-                              and term != slot]
-    print(cleaned_impacted_terms)
+    for line, slot in slots:
+        impacted_terms = []
+        impacted_terms.append(slot)
+        unsolved_funcs = {}
+        for edge in edges:
+            if strip_tag(edge[1]) in unsolved_funcs:
+                solving_funcs(strip_tag(edge[1]), unsolved_funcs, impacted_terms)
+            if get_tag(edge[1]) in ['<IDENT>', '<ITER>', '<TUPLE>']:
+                if strip_tag(edge[1]) in impacted_terms and strip_tag(edge[3]) not in impacted_terms:
+                    impacted_terms.append(strip_tag(edge[3]))
+            elif get_tag(edge[1]) in ['<FUNC>', '<PARAM>']:
+                if strip_tag(edge[3]) not in unsolved_funcs:
+                    unsolved_funcs[strip_tag(edge[3])] = [(strip_tag(edge[1]), edge[2])]
+                else:
+                    unsolved_funcs[strip_tag(edge[3])].append((strip_tag(edge[1]), edge[2]))
+        for key in unsolved_funcs:
+            solving_funcs(key, unsolved_funcs, impacted_terms)
+        cleaned_impacted_terms = [term for term in impacted_terms if term != slot]
+        print({'line': line, 'slot': slot, 'annotation_impact': len(cleaned_impacted_terms),
+               'terms_with_potential_type_updates': cleaned_impacted_terms})
 
     # try:
     #     G = nx.DiGraph()
