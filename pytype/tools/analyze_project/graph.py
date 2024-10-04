@@ -6,6 +6,15 @@ import re
 
 opcode_list = []  # recording all opcodes to draw the type inference graph
 
+def remove_module_str(names):
+    res = []
+    for name in names:
+        if strip_tag(name).startswith('<module>.'):
+            res.append(f"{get_tag(name)} {strip_tag(name)[len('<module>.'):]}")
+        else:
+            res.append(name)
+    return res
+
 def clean_edges(edges):
     ret = []
     for edge in edges:
@@ -18,6 +27,7 @@ def clean_edges(edges):
             continue
         if edge in ret:
             continue
+        edge[1], edge[3] = remove_module_str([edge[1], edge[3]])
         ret.append(edge)
     return ret
 
@@ -492,7 +502,20 @@ def solving_funcs(result, unsolved_funcs, impacted_terms):
 
 def calc_ann_impact(opcode_list):
     edges = draw_type_inference_graph(opcode_list)
-    slots = [(43, 'StrConvert.to_dict.value'),
+    slots = [(22, 'StrConvert.to_path.value'),
+             (22, 'StrConvert.to_path.return'),
+             (26, 'StrConvert.to_path.value'),
+             (26, 'StrConvert.to_path.return'),
+             (30, 'StrConvert.to_list.value'),
+             (30, 'StrConvert.to_list.of_type'),
+             (30, 'StrConvert.to_list.return'),
+             (31, 'StrConvert.to_list.splitter'),
+             (32, 'StrConvert.to_list.splitter'),
+             (34, 'StrConvert.to_list.value'),
+             (39, 'StrConvert.to_set.value'),
+             (39, 'StrConvert.to_set.of_type'),
+             (39, 'StrConvert.to_set.return'),
+             (43, 'StrConvert.to_dict.value'),
              (43, 'StrConvert.to_dict.of_type'),
              (43, 'StrConvert.to_dict.return'),
              (50, 'StrConvert.to_dict.msg'),
@@ -519,7 +542,15 @@ def calc_ann_impact(opcode_list):
              (108, 'StrConvert.to_command.args'),
              (112, 'StrConvert.to_env_list.value'),
              (112, 'StrConvert.to_env_list.return'),
-             (115, 'StrConvert.to_env_list.elements')]
+             (115, 'StrConvert.to_env_list.elements'),
+             (118, 'StrConvert.TRUTHFUL_VALUES'),
+             (119, 'StrConvert.FALSE_VALUES'),
+             (120, 'VALID_BOOL'),
+             (123, 'StrConvert.to_bool.value'),
+             (123, 'StrConvert.to_bool.return'),
+             (124, 'StrConvert.to_bool.norm'),
+             (130, 'StrConvert.to_bool.msg'),
+             (134, '<module>.__all__')]
 
     for line, slot in slots:
         impacted_terms = []
