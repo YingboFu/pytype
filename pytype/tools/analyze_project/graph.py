@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from pytype.abstract._classes import PyTDClass, ParameterizedClass, TupleClass
 from pytype.abstract._singletons import Unsolvable, Unknown
 import re
+from pytype.tools.analyze_project.extract_annotation import get_all_annotation_slots, slot_exists
 
 opcode_list = []  # recording all opcodes to draw the type inference graph
 
@@ -532,87 +533,40 @@ def has_type(data):
     return not isinstance(data[0], Unknown) and not isinstance(data[0], Unsolvable)
 
 def solving_funcs(result, unsolved_funcs, impacted_terms):
-    newly_reached = False
-    fully_typed = True
-    for name, type in unsolved_funcs[result]:
-        if name in impacted_terms:
-            newly_reached = True
-        elif not has_type(type):
-            fully_typed = False
-    if fully_typed and newly_reached and result not in impacted_terms:
-        impacted_terms.append(result)
+    for k, v in unsolved_funcs.items():
+        if k[2] == result:
+            newly_reached = False
+            fully_typed = True
+            for line, offset, name, type in v:
+                if slot_exists(name, impacted_terms):
+                    newly_reached = True
+                elif not has_type(type):
+                    fully_typed = False
+            if fully_typed and newly_reached and not slot_exists(result, impacted_terms):
+                impacted_terms.append(k)
+            break
 
 def calc_ann_impact(opcode_list):
     edges = draw_type_inference_graph(opcode_list)
-    slots = [(22, 'StrConvert.to_path.value'),
-             (22, 'StrConvert.to_path.return'),
-             (26, 'StrConvert.to_path.value'),
-             (26, 'StrConvert.to_path.return'),
-             (30, 'StrConvert.to_list.value'),
-             (30, 'StrConvert.to_list.of_type'),
-             (30, 'StrConvert.to_list.return'),
-             (31, 'StrConvert.to_list.splitter'),
-             (32, 'StrConvert.to_list.splitter'),
-             (34, 'StrConvert.to_list.value'),
-             (39, 'StrConvert.to_set.value'),
-             (39, 'StrConvert.to_set.of_type'),
-             (39, 'StrConvert.to_set.return'),
-             (43, 'StrConvert.to_dict.value'),
-             (43, 'StrConvert.to_dict.of_type'),
-             (43, 'StrConvert.to_dict.return'),
-             (50, 'StrConvert.to_dict.msg'),
-             (54, 'StrConvert._win32_process_path_backslash.value'),
-             (54, 'StrConvert._win32_process_path_backslash.escape'),
-             (54, 'StrConvert._win32_process_path_backslash.special_chars'),
-             (54, 'StrConvert._win32_process_path_backslash.return'),
-             (61, 'StrConvert._win32_process_path_backslash.result'),
-             (65, 'StrConvert._win32_process_path_backslash.last_char'),
-             (68, 'StrConvert._win32_process_path_backslash.next_char'),
-             (74, 'StrConvert.to_command.value'),
-             (74, 'StrConvert.to_command.return'),
-             (80, 'StrConvert.to_command.value'),
-             (81, 'StrConvert.to_command.is_win'),
-             (83, 'StrConvert.to_command.s'),
-             (84, 'StrConvert.to_command.value'),
-             (89, 'StrConvert.to_command.splitter'),
-             (92, 'StrConvert.to_command.args'),
-             (93, 'StrConvert.to_command.pos'),
-             (98, 'StrConvert.to_command.arg'),
-             (100, 'StrConvert.to_command.pos'),
-             (104, 'StrConvert.to_command.msg'),
-             (107, 'StrConvert.to_command.args[0]'),
-             (108, 'StrConvert.to_command.args'),
-             (112, 'StrConvert.to_env_list.value'),
-             (112, 'StrConvert.to_env_list.return'),
-             (115, 'StrConvert.to_env_list.elements'),
-             (118, 'StrConvert.TRUTHFUL_VALUES'),
-             (119, 'StrConvert.FALSE_VALUES'),
-             (120, 'VALID_BOOL'),
-             (123, 'StrConvert.to_bool.value'),
-             (123, 'StrConvert.to_bool.return'),
-             (124, 'StrConvert.to_bool.norm'),
-             (130, 'StrConvert.to_bool.msg'),
-             (134, '<module>.__all__')]
-
-    for line, slot in slots:
-        impacted_terms = []
-        impacted_terms.append(slot)
+    slots = get_all_annotation_slots('/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/str_convert.py')
+    for line, offset, slot in slots:
+        impacted_terms = [(line, offset, slot)]
         unsolved_funcs = {}
         for edge in edges:
-            if strip_tag(edge[2]) in unsolved_funcs:
+            if slot_exists(strip_tag(edge[2]), unsolved_funcs.keys()):
                 solving_funcs(strip_tag(edge[2]), unsolved_funcs, impacted_terms)
             if get_tag(edge[2]) in ['<IDENT>', '<ITER>', '<TUPLE>']:
-                if strip_tag(edge[2]) in impacted_terms and strip_tag(edge[6]) not in impacted_terms:
-                    impacted_terms.append(strip_tag(edge[6]))
+                if slot_exists(strip_tag(edge[2]), impacted_terms) and not slot_exists(strip_tag(edge[6]), impacted_terms):
+                    impacted_terms.append((edge[4], edge[5], strip_tag(edge[6])))
             elif get_tag(edge[2]) in ['<FUNC>', '<PARAM>']:
-                if strip_tag(edge[6]) not in unsolved_funcs:
-                    unsolved_funcs[strip_tag(edge[6])] = [(strip_tag(edge[2]), edge[3])]
+                if not slot_exists(strip_tag(edge[6]), unsolved_funcs.keys()):
+                    unsolved_funcs[(edge[4], edge[5], strip_tag(edge[6]))] = [(edge[0], edge[1], strip_tag(edge[2]), edge[3])]
                 else:
-                    unsolved_funcs[strip_tag(edge[6])].append((strip_tag(edge[2]), edge[3]))
+                    unsolved_funcs[(edge[4], edge[5], strip_tag(edge[6]))].append((edge[0], edge[1], strip_tag(edge[2]), edge[3]))
         for key in unsolved_funcs:
-            solving_funcs(key, unsolved_funcs, impacted_terms)
-        cleaned_impacted_terms = [term for term in impacted_terms if term != slot]
-        print({'line': line, 'slot': slot, 'annotation_impact': len(cleaned_impacted_terms),
+            solving_funcs(key[2], unsolved_funcs, impacted_terms)
+        cleaned_impacted_terms = [term for term in impacted_terms if term[2] != slot and slot_exists(term[2], slots)]
+        print({'line': line, 'offset': offset, 'slot': slot, 'annotation_impact': len(cleaned_impacted_terms),
                'terms_with_potential_type_updates': cleaned_impacted_terms})
 
     # try:

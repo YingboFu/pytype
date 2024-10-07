@@ -256,64 +256,24 @@ def extract_annotation(filename: str) -> List[Tuple[str, str, str, str, int, int
         return []
     return extract_types(filename, tree)
 
+def slot_exists(name, slots):
+    exist = False
+    for s in slots:
+        if s[2] == name:
+            exist = True
+    return exist
 
-for ann in extract_annotation('/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/str_convert.py'):
-    if ann[2] != 'N/A':
-        print(f"{ann[-3]}: {ann[-2]}, {ann[1][1:]}.{ann[2]}")
-    elif ann[3] == 'RET':
-        print(f"{ann[-3]}: {ann[-2]}, {ann[1][1:]}.return")
-    else:
-        print(f"{ann[-3]}: {ann[-2]}, {ann[1][1:]}")
 
-# slots = [(22, 'StrConvert.to_path.value'),
-#              (22, 'StrConvert.to_path.return'),
-#              (26, 'StrConvert.to_path.value'),
-#              (26, 'StrConvert.to_path.return'),
-#              (30, 'StrConvert.to_list.value'),
-#              (30, 'StrConvert.to_list.of_type'),
-#              (30, 'StrConvert.to_list.return'),
-#              (31, 'StrConvert.to_list.splitter'),
-#              (32, 'StrConvert.to_list.splitter'),
-#              (34, 'StrConvert.to_list.value'),
-#              (39, 'StrConvert.to_set.value'),
-#              (39, 'StrConvert.to_set.of_type'),
-#              (39, 'StrConvert.to_set.return'),
-#              (43, 'StrConvert.to_dict.value'),
-#              (43, 'StrConvert.to_dict.of_type'),
-#              (43, 'StrConvert.to_dict.return'),
-#              (50, 'StrConvert.to_dict.msg'),
-#              (54, 'StrConvert._win32_process_path_backslash.value'),
-#              (54, 'StrConvert._win32_process_path_backslash.escape'),
-#              (54, 'StrConvert._win32_process_path_backslash.special_chars'),
-#              (54, 'StrConvert._win32_process_path_backslash.return'),
-#              (61, 'StrConvert._win32_process_path_backslash.result'),
-#              (65, 'StrConvert._win32_process_path_backslash.last_char'),
-#              (68, 'StrConvert._win32_process_path_backslash.next_char'),
-#              (74, 'StrConvert.to_command.value'),
-#              (74, 'StrConvert.to_command.return'),
-#              (80, 'StrConvert.to_command.value'),
-#              (81, 'StrConvert.to_command.is_win'),
-#              (83, 'StrConvert.to_command.s'),
-#              (84, 'StrConvert.to_command.value'),
-#              (89, 'StrConvert.to_command.splitter'),
-#              (92, 'StrConvert.to_command.args'),
-#              (93, 'StrConvert.to_command.pos'),
-#              (98, 'StrConvert.to_command.arg'),
-#              (100, 'StrConvert.to_command.pos'),
-#              (104, 'StrConvert.to_command.msg'),
-#              (107, 'StrConvert.to_command.args[0]'),
-#              (108, 'StrConvert.to_command.args'),
-#              (112, 'StrConvert.to_env_list.value'),
-#              (112, 'StrConvert.to_env_list.return'),
-#              (115, 'StrConvert.to_env_list.elements'),
-#              (118, 'StrConvert.TRUTHFUL_VALUES'),
-#              (119, 'StrConvert.FALSE_VALUES'),
-#              (120, 'VALID_BOOL'),
-#              (123, 'StrConvert.to_bool.value'),
-#              (123, 'StrConvert.to_bool.return'),
-#              (124, 'StrConvert.to_bool.norm'),
-#              (130, 'StrConvert.to_bool.msg'),
-#              (134, '<module>.__all__')]
-#
-# for slot in slots:
-#     print(f"{slot[0]}, {slot[1]}")
+def get_all_annotation_slots(file):
+    annotation_slots = []
+    for ann in extract_annotation(file):
+        if ann[2] != 'N/A':
+            if not slot_exists(f'{ann[1][1:]}.{ann[2]}', annotation_slots):
+                annotation_slots.append((ann[-3], ann[-2], f'{ann[1][1:]}.{ann[2]}'))
+        elif ann[3] == 'RET':
+            if not slot_exists(f'{ann[1][1:]}.return', annotation_slots):
+                annotation_slots.append((ann[-3], ann[-2], f'{ann[1][1:]}.return'))
+        else:
+            if not slot_exists(f'{ann[1][1:]}', annotation_slots):
+                annotation_slots.append((ann[-3], ann[-2], f'{ann[1][1:]}'))
+    return annotation_slots
