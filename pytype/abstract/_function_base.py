@@ -16,6 +16,7 @@ from pytype.abstract import abstract_utils
 from pytype.abstract import function
 from pytype.errors import error_types
 from pytype.types import types
+from pytype.tools.analyze_project.graph import opcode_list
 
 log = logging.getLogger(__name__)
 _isinstance = abstract_utils._isinstance  # pylint: disable=protected-access
@@ -527,8 +528,15 @@ class SignedFunction(Function):
       function.FailedFunctionCall: If the caller supplied incorrect arguments.
     """
     # Originate a new variable for each argument and call.
+    old_new_var_map = []
     posargs = [u.AssignToNewVariable(node) for u in args.posargs]
+    for i in range(len(args.posargs)):
+      if i < len(posargs):
+        old_new_var_map.append((f"v{args.posargs[i].id}", f"v{posargs[i].id}"))
     kws = {k: u.AssignToNewVariable(node) for k, u in args.namedargs.items()}
+    for k, u in args.namedargs.items():
+      if k in kws:
+        old_new_var_map.append((f"v{u.id}", f"v{kws[k].id}"))
     sig = self.signature
     callargs = {
         name: self.ctx.program.NewVariable(default.data, [], node)
@@ -570,6 +578,7 @@ class SignedFunction(Function):
         if extraneous:
           log.warning("Not adding extra params to *%s", varargs_name)
         callargs[varargs_name] = args.starargs.AssignToNewVariable(node)
+        old_new_var_map.append((f"v{args.starargs.id}", f"v{callargs[varargs_name].id}"))
       else:
         callargs[varargs_name] = self.ctx.convert.build_tuple(node, extraneous)
     elif len(posargs) > self.argcount(node):
@@ -579,11 +588,13 @@ class SignedFunction(Function):
       # Build a **kwargs dictionary out of the extraneous parameters
       if args.starstarargs:
         callargs[kwargs_name] = args.starstarargs.AssignToNewVariable(node)
+        old_new_var_map.append((f"v{args.starstarargs.id}", f"v{callargs[kwargs_name].id}"))
       else:
         omit = sig.param_names + sig.kwonly_params
         k = _instances.Dict(self.ctx)
         k.update(node, args.namedargs, omit=omit)
         callargs[kwargs_name] = k.to_variable(node)
+    opcode_list.append({"opcode": "CALL_UD_FUNC", "old_new_var_map": old_new_var_map, "callargs": callargs, "fullname": self.full_name})
     return callargs
 
   def _check_paramspec_args(self, args):

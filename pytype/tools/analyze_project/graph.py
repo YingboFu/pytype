@@ -243,6 +243,8 @@ def get_tag(name_str):
     ridx = name_str.find('>')
     if lidx != -1 and ridx != -1:
         return name_str[lidx:ridx+1]
+    else:
+        return ''
 
 def draw_type_inference_graph(opcode_list):
     opcode_list = _pre_process_opcodes(opcode_list)
@@ -457,8 +459,8 @@ def draw_type_inference_graph(opcode_list):
                         edge[6] = f"<RET> {element['fullname']}.return"
                         edge[7] = element['value_data']
             else:
-                if opcode_list.index(element) + 2 < len(opcode_list):
-                    next_resume = opcode_list[opcode_list.index(element) + 2]
+                if opcode_list.index(element) + 3 < len(opcode_list):
+                    next_resume = opcode_list[opcode_list.index(element) + 3]
                     if next_resume['opcode'] == 'RESUME' and (next_resume['state_node_name'].startswith('Function:')
                                                               or next_resume['state_node_name'].startswith('Method:')):
                         for edge in edges:
@@ -521,6 +523,13 @@ def draw_type_inference_graph(opcode_list):
                     edge[5] = element['offset']
                     edge[6] = element['map_id']
                     edge[7] = element['map_data']
+        elif element['opcode'] == 'CALL_UD_FUNC':
+            for old, new in element['old_new_var_map']:
+                for k,v in element['callargs'].items():
+                    if f"v{v.id}" == new:
+                        for edge in edges:
+                            if strip_tag(edge[6]) == old:
+                                edge[6] = get_tag(edge[6]) + f"{element['fullname']}.{k}"
 
     edges_clean = clean_edges(edges)
     print('====edges====')
