@@ -16,6 +16,14 @@ def remove_module_str(names):
             res.append(name)
     return res
 
+def edge_in(edge, ret):
+    exist = False
+    for e in ret:
+        if (e[0] == edge[0] and e[1] == edge[1] and strip_tag(e[2]) == strip_tag(edge[2])
+                and e[4] == edge[4] and e[5] == edge[5] and strip_tag(e[6]) == strip_tag(edge[6])):
+            exist = True
+    return exist
+
 def clean_edges(edges):
     ret = []
     for edge in edges:
@@ -24,9 +32,9 @@ def clean_edges(edges):
             continue
         if edge[6][0] == 'v' and edge[6][1:].isdigit():
             continue
-        if strip_tag(edge[6]).endswith('__qualname__') or strip_tag(edge[6]).endswith('__doc__') or strip_tag(edge[6]).endswith('__module__') or strip_tag(edge[2]) == strip_tag(edge[6]):
+        if strip_tag(edge[6]).endswith('__qualname__') or strip_tag(edge[6]).endswith('__doc__') or strip_tag(edge[6]).endswith('__module__'):
             continue
-        if edge in ret:
+        if edge_in(edge, ret):
             continue
         edge[2], edge[6] = remove_module_str([edge[2], edge[6]])
         ret.append(edge)
@@ -258,6 +266,11 @@ def draw_type_inference_graph(opcode_list):
             edges.append([element['line'], element['offset'], f"<CONST> {element['raw_const']}", element['value_data'],
                           element['line'], element['offset'], element['value_id'], element['value_data']])
         elif element['opcode'] == 'LOAD_NAME' or element['opcode'] == 'LOAD_GLOBAL' or element['opcode'] == 'LOAD_CLOSURE':
+            for edge in edges[::-1]:
+                if strip_tag(edge[6]) == f"{element['fullname']}.{element['name']}" and strip_tag(edge[2]) != strip_tag(edge[6]):
+                    edges.append([edge[4], edge[5], edge[6], edge[7],
+                                  element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['name']}", element['value_data']])
+                    break
             edges.append([element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['name']}", element['value_data'],
                           element['line'], element['offset'], element['value_id'], element['value_data']])
         elif element['opcode'] == 'LOAD_FAST':
@@ -273,18 +286,19 @@ def draw_type_inference_graph(opcode_list):
                                 edge[7] = element['value_data']
                         break
             else:
-                exist = False
-                for edge in edges:
-                    if strip_tag(edge[6]) == f"{element['fullname']}.{element['name']}":
-                        exist = True
-                if not exist:
-                    _store_fast(opcode_list, element, edges)
-                if element['name'] == 'self':
-                    edges.append([element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['value_data'][0].name}", element['value_data'],
-                                  element['line'], element['offset'], element['value_id'], element['value_data']])
-                else:
-                    edges.append([element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['name']}", element['value_data'],
-                                  element['line'], element['offset'], element['value_id'], element['value_data']])
+                for edge in edges[::-1]:
+                    if strip_tag(edge[6]) == f"{element['fullname']}.{element['name']}" and strip_tag(edge[2]) != strip_tag(edge[6]):
+                        if element['name'] == 'self':
+                            edges.append([edge[4], edge[5], edge[6], edge[7],
+                                          element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['value_data'][0].name}", element['value_data']])
+                            edges.append([element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['value_data'][0].name}", element['value_data'],
+                                          element['line'], element['offset'], element['value_id'], element['value_data']])
+                        else:
+                            edges.append([edge[4], edge[5], edge[6], edge[7],
+                                          element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['name']}", element['value_data']])
+                            edges.append([element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['name']}", element['value_data'],
+                                          element['line'], element['offset'], element['value_id'], element['value_data']])
+                        break
         elif element['opcode'] == 'LOAD_FOLDED_CONST':
             edges.append([element['line'], element['offset'], f"<CONST> {element['raw_const']}", element['value_data'],
                           element['line'], element['offset'], element['value_id'], element['value_data']])
