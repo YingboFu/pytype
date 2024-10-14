@@ -163,7 +163,7 @@ def call_opcode_handler(edges, element, opcode_list):
                         edge[4] = element['line']
                         edge[5] = element['offset']
                         if not edge[2].startswith('<FUNC>'):
-                            edge[2] = f"<PARAM> {strip_tag(edge[2])}"
+                            edge[2] = f"<ARG> {strip_tag(edge[2])}"
                             edge[3] = arg.data
                         edge[6] = f"v{element['ret'].id}"
                         edge[7] = element['ret'].data
@@ -174,7 +174,7 @@ def call_opcode_handler(edges, element, opcode_list):
                         edge[4] = element['line']
                         edge[5] = element['offset']
                         if not edge[2].startswith('FUNC'):
-                            edge[2] = f"<PARAM> {strip_tag(edge[2])}"
+                            edge[2] = f"<ARG> {strip_tag(edge[2])}"
                             edge[3] = v.data
                         edge[6] = f"v{element['ret'].id}"
                         edge[7] = element['ret'].data
@@ -184,7 +184,7 @@ def call_opcode_handler(edges, element, opcode_list):
                     edge[4] = element['line']
                     edge[5] = element['offset']
                     if not edge[2].startswith('FUNC'):
-                        edge[2] = f"<PARAM> {strip_tag(edge[1])}"
+                        edge[2] = f"<ARG> {strip_tag(edge[1])}"
                         edge[3] = element['starargs'].data
                     edge[6] = f"v{element['ret'].id}"
                     edge[7] = element['ret'].data
@@ -194,7 +194,7 @@ def call_opcode_handler(edges, element, opcode_list):
                     edge[4] = element['line']
                     edge[5] = element['offset']
                     if not edge[2].startswith('FUNC'):
-                        edge[2] = f"<PARAM> {strip_tag(edge[1])}"
+                        edge[2] = f"<ARG> {strip_tag(edge[1])}"
                         edge[3] = element['starstarargs'].data
                     edge[6] = f"v{element['ret'].id}"
                     edge[7] = element['ret'].data
@@ -302,7 +302,7 @@ def draw_type_inference_graph(opcode_list):
                             else:
                                 x_name = strip_tag(edge[2]).replace(element['fullname']+'.', '')
                         else:
-                            if edge[2].startswith('<PARAM>'):
+                            if edge[2].startswith('<ARG>'):
                                 ridx = x_name.rfind(')')
                                 if ridx != -1:
                                     if x_name[ridx - 1] == '(':
@@ -435,21 +435,21 @@ def draw_type_inference_graph(opcode_list):
             for value in element['values']:
                 edges.append([element['line'], element['offset'], f"<ITER> {element['seq_id']}", element['seq_data'],
                               element['line'], element['offset'], f"v{value.id}", value.data])
-        elif element['opcode'] == 'RESUME':
-            for opcode in opcode_list:
-                if (opcode['opcode'] == 'MAKE_FUNCTION' and
-                        (f"Function:{opcode['func_name']}" == element['state_node_name'] or
-                         f"Method:{opcode['func_name']}" == element['state_node_name'])):
-                    for k, ann in opcode['annot'].items():
-                        lidx = repr(ann).find("'")
-                        ridx = repr(ann).rfind("'")
-                        ann_str = repr(ann)[lidx + 1: ridx]
-                        if k != 'return':
-                            edges.append([opcode['line'], opcode['offset'], f"<TYPE> {ann_str}", ann_str,
-                                          opcode['line'], opcode['offset'], f"<PARAM> {element['fullname']}.{k}", ann_str])
-                        else:
-                            edges.append([opcode['line'], opcode['offset'], f"<TYPE> {ann_str}", ann_str,
-                                          opcode['line'], opcode['offset'], f"<RET> {element['fullname']}.{k}", ann_str])
+        elif element['opcode'] == 'MAKE_FUNCTION':
+            for k, ann in element['annot'].items():
+                lidx = repr(ann).find("'")
+                ridx = repr(ann).rfind("'")
+                ann_str = repr(ann)[lidx + 1: ridx]
+                if k != 'return':
+                    edges.append([element['line'], element['offset'], f"<TYPE> {ann_str}", ann_str,
+                                  element['line'], element['offset'], f"<PARAM> {element['fullname']}.{k}", ann_str])
+                else:
+                    edges.append([element['line'], element['offset'], f"<TYPE> {ann_str}", ann_str,
+                                  element['line'], element['offset'], f"<RET> {element['fullname']}.{k}", ann_str])
+            for param, _, _ in element['params']:
+                if not re.fullmatch(r"\.\d+", param) and param not in element['annot']:
+                    edges.append([element['line'], element['offset'], f"<TYPE> Noanno", '',
+                                  element['line'], element['offset'], f"<PARAM> {element['func_name']}.{param}", ''])
         elif element['opcode'] == 'RETURN_VALUE':
             if element['state_node_name'].startswith('Function:') or element['state_node_name'].startswith('Method:'):
                 for edge in edges:
@@ -492,7 +492,7 @@ def draw_type_inference_graph(opcode_list):
                     else:
                         if edge[2].startswith('<FUNC>'):
                             tuple_str = tuple_str + ", " + f"{strip_tag(edge[2]).replace(element['fullname']+'.', '')}()"
-                        elif edge[2].startswith('<PARAM>'):
+                        elif edge[2].startswith('<ARG>'):
                             ridx = tuple_str.rfind(')')
                             if ridx != -1:
                                 if tuple_str[ridx - 1] == '(':
@@ -528,8 +528,13 @@ def draw_type_inference_graph(opcode_list):
                 for k,v in element['callargs'].items():
                     if f"v{v.id}" == new:
                         for edge in edges:
-                            if strip_tag(edge[6]) == old:
-                                edge[6] = get_tag(edge[6]) + f"{element['fullname']}.{k}"
+                            if strip_tag(edge[6]) == old and not re.fullmatch(r"\.\d+", k):
+                                for e in edges:
+                                    if e[6] == f"<PARAM> {element['fullname']}.{k}" and e[2] == "<TYPE> Noanno":
+                                        edge[4:6] = e[4:6]
+                                        edge[6] = get_tag(edge[6]) + f"{element['fullname']}.{k}"
+                                        edges.remove(e)
+                                        break
 
     edges_clean = clean_edges(edges)
     print('====edges====')
@@ -567,7 +572,7 @@ def calc_ann_impact(opcode_list):
             if get_tag(edge[2]) in ['<IDENT>', '<ITER>', '<TUPLE>']:
                 if slot_exists(strip_tag(edge[2]), impacted_terms) and not slot_exists(strip_tag(edge[6]), impacted_terms):
                     impacted_terms.append((edge[4], edge[5], strip_tag(edge[6])))
-            elif get_tag(edge[2]) in ['<FUNC>', '<PARAM>']:
+            elif get_tag(edge[2]) in ['<FUNC>', '<ARG>']:
                 if not slot_exists(strip_tag(edge[6]), unsolved_funcs.keys()):
                     unsolved_funcs[(edge[4], edge[5], strip_tag(edge[6]))] = [(edge[0], edge[1], strip_tag(edge[2]), edge[3])]
                 else:

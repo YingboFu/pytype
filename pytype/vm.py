@@ -2935,8 +2935,9 @@ class VirtualMachine:
     func.decorators = self._director.decorators[op.line]
     func.cache_return = self._director.has_pragma("cache-return", op.line)
     vm_utils.process_function_type_comment(state.node, op, func, self.ctx)
+    params = func_var.bindings[0].data.get_parameters()
     opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "offset": op.col, 'opcode': 'MAKE_FUNCTION',
-                        'func_name': func.name, 'func_var': func_var, 'annot': raw_annot})
+                        'func_name': func.name, 'func_var': func_var, 'annot': raw_annot, 'params': params})
     self.trace_opcode(op, func.name, func_var)
     self.trace_functiondef(func_var)
     return state.push(func_var)
