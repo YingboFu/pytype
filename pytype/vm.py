@@ -3136,7 +3136,7 @@ class VirtualMachine:
   def byte_RETURN_VALUE(self, state, op):
     state, var = state.pop()
     opcode_list.append({"fullname": self.frame.f_code.qualname, "line": op.line, "offset": op.col, 'opcode': 'RETURN_VALUE',
-                        'value_id': f'v{var.id}', 'value_data': var.data, 'state_node_name': state.node.name})
+                        'value_id': f'v{var.id}', 'value_data': var.data, 'frame_node_name': self.frame.node.name})
     return self._return_value(state, var)
 
   def byte_RETURN_CONST(self, state, op):

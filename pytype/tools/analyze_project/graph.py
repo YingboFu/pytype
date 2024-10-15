@@ -465,24 +465,14 @@ def draw_type_inference_graph(opcode_list):
                     edges.append([element['line'], element['offset'], f"<TYPE> Noanno", '',
                                   element['line'], element['offset'], f"<PARAM> {element['func_name']}.{param}", ''])
         elif element['opcode'] == 'RETURN_VALUE':
-            if element['state_node_name'].startswith('Function:') or element['state_node_name'].startswith('Method:'):
+            if ((element['frame_node_name'].startswith('Function:') and element['frame_node_name'][9:] == element['fullname']) or
+                    (element['frame_node_name'].startswith('Method:') and element['frame_node_name'][7:] == element['fullname'])):
                 for edge in edges:
                     if edge[6] == element['value_id']:
                         edge[4] = element['line']
                         edge[5] = element['offset']
                         edge[6] = f"<RET> {element['fullname']}.return"
                         edge[7] = element['value_data']
-            else:
-                if opcode_list.index(element) + 3 < len(opcode_list):
-                    next_resume = opcode_list[opcode_list.index(element) + 3]
-                    if next_resume['opcode'] == 'RESUME' and (next_resume['state_node_name'].startswith('Function:')
-                                                              or next_resume['state_node_name'].startswith('Method:')):
-                        for edge in edges:
-                            if edge[6] == element['value_id']:
-                                edge[4] = element['line']
-                                edge[5] = element['offset']
-                                edge[6] = f"<RET> {element['fullname']}.return"
-                                edge[7] = element['value_data']
         elif element['opcode'] == 'COMPARE_OP':
             for edge in edges:
                 if edge[6] == element['x_id'] or edge[6] == element['y_id']:
