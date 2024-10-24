@@ -2,6 +2,7 @@
 
 import logging
 import sys
+import os
 import shutil
 
 import importlab.environment
@@ -22,11 +23,7 @@ from pytype.tools.analyze_project import pytype_runner
 
 def main():
   parser = parse_args.make_parser()
-  src1 = '/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/str_convert.py'
-  src2 = '/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/stringify.py'
-  src3 = '/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/section.py'
-  src4 = '/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/memory.py'
-  args = parser.parse_args([src1])
+  args = parser.parse_args(sys.argv[1:])
   if args.version:
     print(io.get_pytype_version())
     sys.exit(0)

@@ -1,6 +1,7 @@
 import networkx as nx
 import matplotlib.pyplot as plt
 from pytype.abstract._classes import PyTDClass, ParameterizedClass, TupleClass
+from datetime import datetime
 from pytype.abstract._singletons import Unsolvable, Unknown
 import re
 from pytype.tools.analyze_project.extract_annotation import get_all_annotation_slots, slot_exists
@@ -565,27 +566,39 @@ def solving_funcs(result, unsolved_funcs, impacted_terms):
             break
 
 def calc_ann_impact(opcode_list):
+    ann_impact_res = []
     edges = draw_type_inference_graph(opcode_list)
-    slots = get_all_annotation_slots('/Users/fuyingbo/Desktop/test_project/tox/src/tox/config/loader/str_convert.py')
-    for line, offset, slot in slots:
-        impacted_terms = [(line, offset, slot)]
-        unsolved_funcs = {}
-        for edge in edges:
-            if slot_exists(strip_tag(edge[2]), unsolved_funcs.keys()):
-                solving_funcs(strip_tag(edge[2]), unsolved_funcs, impacted_terms)
-            if get_tag(edge[2]) in ['<IDENT>', '<ITER>', '<TUPLE>']:
-                if slot_exists(strip_tag(edge[2]), impacted_terms) and not slot_exists(strip_tag(edge[6]), impacted_terms):
-                    impacted_terms.append((edge[4], edge[5], strip_tag(edge[6])))
-            elif get_tag(edge[2]) in ['<FUNC>', '<ARG>']:
-                if not slot_exists(strip_tag(edge[6]), unsolved_funcs.keys()):
-                    unsolved_funcs[(edge[4], edge[5], strip_tag(edge[6]))] = [(edge[0], edge[1], strip_tag(edge[2]), edge[3])]
-                else:
-                    unsolved_funcs[(edge[4], edge[5], strip_tag(edge[6]))].append((edge[0], edge[1], strip_tag(edge[2]), edge[3]))
-        for key in unsolved_funcs:
-            solving_funcs(key[2], unsolved_funcs, impacted_terms)
-        cleaned_impacted_terms = [term for term in impacted_terms if term[2] != slot and slot_exists(term[2], slots)]
-        print({'line': line, 'offset': offset, 'slot': slot, 'annotation_impact': len(cleaned_impacted_terms),
-               'terms_with_potential_type_updates': cleaned_impacted_terms})
+    filename = ''
+    for opcode in opcode_list:
+        if 'filename' in opcode:
+            filename = opcode['filename']
+            break
+    if filename != '':
+        slots = get_all_annotation_slots(filename)
+        for line, offset, slot in slots:
+            impacted_terms = [(line, offset, slot)]
+            unsolved_funcs = {}
+            for edge in edges:
+                if slot_exists(strip_tag(edge[2]), unsolved_funcs.keys()):
+                    solving_funcs(strip_tag(edge[2]), unsolved_funcs, impacted_terms)
+                if get_tag(edge[2]) in ['<IDENT>', '<ITER>', '<TUPLE>']:
+                    if slot_exists(strip_tag(edge[2]), impacted_terms) and not slot_exists(strip_tag(edge[6]), impacted_terms):
+                        impacted_terms.append((edge[4], edge[5], strip_tag(edge[6])))
+                elif get_tag(edge[2]) in ['<FUNC>', '<ARG>']:
+                    if not slot_exists(strip_tag(edge[6]), unsolved_funcs.keys()):
+                        unsolved_funcs[(edge[4], edge[5], strip_tag(edge[6]))] = [(edge[0], edge[1], strip_tag(edge[2]), edge[3])]
+                    else:
+                        unsolved_funcs[(edge[4], edge[5], strip_tag(edge[6]))].append((edge[0], edge[1], strip_tag(edge[2]), edge[3]))
+            for key in unsolved_funcs:
+                solving_funcs(key[2], unsolved_funcs, impacted_terms)
+            cleaned_impacted_terms = [term for term in impacted_terms if term[2] != slot and slot_exists(term[2], slots)]
+            if len(cleaned_impacted_terms) > 0:
+                ann_impact_res.append({'filename': filename, 'line': line, 'offset': offset, 'slot': slot, 'annotation_impact': len(cleaned_impacted_terms),
+                       'terms_with_potential_type_updates': cleaned_impacted_terms})
+        sorted_data = sorted(ann_impact_res, key=lambda x: x['annotation_impact'], reverse=True)
+        with open(filename.replace('.py', f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_ai"), 'w') as f:
+            for ann_impact in sorted_data:
+                print(ann_impact, file=f)
 
     # try:
     #     G = nx.DiGraph()

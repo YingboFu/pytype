@@ -206,6 +206,57 @@ def extract_annotation_from_assign(node: ast.Assign,
     return slot
 
 
+def extract_annotation_from_for(node: Union[ast.For, ast.AsyncFor],
+                                filename: str,
+                                parent_name: str) -> List[Tuple[str, str, str, str, int, int, str]]:
+    slot: List[Tuple[str, str, str, str, int, int, str]] = []
+    if node.type_comment:
+        annotations = process_type_comments_raw_string(node.type_comment)
+        if isinstance(node.target, ast.Tuple):
+            for i in range(len(node.target.elts)):
+                fullname = f"{parent_name}.{ast.unparse(node.target.elts[i])}"
+                if i < len(annotations):
+                    slot.append((filename, fullname, "N/A", "VAR", node.target.elts[i].lineno, node.target.elts[i].col_offset, annotations[i]))
+                else:
+                    slot.append((filename, fullname, "N/A", "VAR", node.target.elts[i].lineno, node.target.elts[i].col_offset, "NO ANNOTATION"))
+        else:
+            fullname = f"{parent_name}.{ast.unparse(node.target)}"
+            slot.append((filename, fullname, "N/A", "VAR", node.target.lineno, node.target.col_offset, node.type_comment))
+    else:
+        if isinstance(node.target, ast.Tuple):
+            for element in node.target.elts:
+                fullname = f"{parent_name}.{ast.unparse(element)}"
+                slot.append((filename, fullname, "N/A", "VAR", element.lineno, element.col_offset, "NO ANNOTATION"))
+        else:
+            fullname = f"{parent_name}.{ast.unparse(node.target)}"
+            slot.append((filename, fullname, "N/A", "VAR", node.target.lineno, node.col_offset, "NO ANNOTATION"))
+    return slot
+
+
+def extract_annotation_from_with(node: Union[ast.With, ast.AsyncWith],
+                                 filename: str,
+                                 parent_name: str) -> List[Tuple[str, str, str, str, int, int, str]]:
+    slot: List[Tuple[str, str, str, str, int, int, str]] = []
+    if node.type_comment:
+        annotations = process_type_comments_raw_string(node.type_comment)
+        idx = 0
+        for item in node.items:
+            if item.optional_vars:
+                fullname = f"{parent_name}.{ast.unparse(item.optional_vars)}"
+                if idx < len(annotations):
+                    slot.append((filename, fullname, "N/A", "VAR", item.optional_vars.lineno, item.optional_vars.col_offset, annotations[idx]))
+                    idx += 1
+                else:
+                    slot.append((filename, fullname, "N/A", "VAR", item.optional_vars.lineno, item.optional_vars.col_offset, "NO ANNOTATION"))
+    else:
+        for item in node.items:
+            if item.optional_vars:
+                var = item.optional_vars
+                fullname = f"{parent_name}.{ast.unparse(var)}"
+                slot.append((filename, fullname, "N/A", "VAR", var.lineno, var.col_offset, "NO ANNOTATION"))
+    return slot
+
+
 def extract_types(filename, tree):
     slot: List[Tuple[str, str, str, str, int, int, str]] = []
     module_name = ''
@@ -226,8 +277,12 @@ def extract_types(filename, tree):
             fullname = self_name_handler(parent_name, node.target)
             slot.append((filename, fullname, "N/A", "VAR", node.lineno, node.col_offset, ast.unparse(node.annotation)))
         elif isinstance(node, ast.For) or isinstance(node, ast.AsyncFor):
+            res_for = extract_annotation_from_for(node, filename, parent_name)
+            slot.extend(res_for)
             stack.extend([parent_name, child] for child in node.body[::-1])
         elif isinstance(node, ast.With) or isinstance(node, ast.AsyncWith):
+            res_with = extract_annotation_from_with(node, filename, parent_name)
+            slot.extend(res_with)
             stack.extend([parent_name, child] for child in node.body[::-1])
         elif isinstance(node, ast.If):
             stack.extend([parent_name, child] for child in node.orelse[::-1])
