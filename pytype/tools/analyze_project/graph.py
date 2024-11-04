@@ -4,6 +4,7 @@ from pytype.abstract._classes import PyTDClass, ParameterizedClass, TupleClass
 from datetime import datetime
 from pytype.abstract._singletons import Unsolvable, Unknown
 import re
+import json
 from pytype.tools.analyze_project.extract_annotation import get_all_annotation_slots, slot_exists
 
 opcode_list = []  # recording all opcodes to draw the type inference graph
@@ -355,8 +356,8 @@ def draw_type_inference_graph(opcode_list):
                     edges[-1][4] = element['line']
                     edges[-1][5] = element['offset']
                     edges[-1][6] = 'v0'
-                edges.append([element['line'], element['offset'], f"<TYPE> {element['annotation']}", element['annotation'],
-                              element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['name']}", element['annotation']])
+                edges.append([element['line'], element['offset'], f"<TYPE> {element['annotation']}", [element['annotation']],
+                              element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['name']}", [element['annotation']]])
             else:
                 found = False
                 for edge in edges:
@@ -418,7 +419,8 @@ def draw_type_inference_graph(opcode_list):
                     l = edge[0:4]
                 if edge[6] == f"v{element['posargs'][0].id}":
                     new_item = edge[0:4]
-            edges.append(new_item + l)
+            if len(l) > 0 and len(new_item) > 0:
+                edges.append(new_item + l)
         elif element['opcode'] == 'DICT_MERGE' or element['opcode'] == 'LIST_EXTEND':
             for edge in edges:
                 if edge[6] == element['update_id']:
@@ -456,15 +458,15 @@ def draw_type_inference_graph(opcode_list):
                 ridx = repr(ann).rfind("'")
                 ann_str = repr(ann)[lidx + 1: ridx]
                 if k != 'return':
-                    edges.append([element['line'], element['offset'], f"<TYPE> {ann_str}", ann_str,
-                                  element['line'], element['offset'], f"<PARAM> {element['fullname']}.{k}", ann_str])
+                    edges.append([element['line'], element['offset'], f"<TYPE> {ann_str}", [ann_str],
+                                  element['line'], element['offset'], f"<PARAM> {element['func_name']}.{k}", [ann_str]])
                 else:
-                    edges.append([element['line'], element['offset'], f"<TYPE> {ann_str}", ann_str,
-                                  element['line'], element['offset'], f"<RET> {element['fullname']}.{k}", ann_str])
+                    edges.append([element['line'], element['offset'], f"<TYPE> {ann_str}", [ann_str],
+                                  element['line'], element['offset'], f"<RET> {element['func_name']}.{k}", [ann_str]])
             for param, _, _ in element['params']:
                 if not re.fullmatch(r"\.\d+", param) and param not in element['annot']:
-                    edges.append([element['line'], element['offset'], f"<TYPE> Noanno", '',
-                                  element['line'], element['offset'], f"<PARAM> {element['func_name']}.{param}", ''])
+                    edges.append([element['line'], element['offset'], f"<TYPE> Noanno", [''],
+                                  element['line'], element['offset'], f"<PARAM> {element['func_name']}.{param}", ['']])
         elif element['opcode'] == 'RETURN_VALUE':
             if ((element['frame_node_name'].startswith('Function:') and element['frame_node_name'][9:] == element['fullname']) or
                     (element['frame_node_name'].startswith('Method:') and element['frame_node_name'][7:] == element['fullname'])):
@@ -482,8 +484,8 @@ def draw_type_inference_graph(opcode_list):
                     edge[6] = element['ret_id']
                     edge[7] = element['ret_data']
         elif element['opcode'] == 'BUILD_STRING':
-            edges.append([element['line'], element['offset'], '<TYPE> str', 'str',
-                          element['line'], element['offset'], element['val_id'], 'str'])
+            edges.append([element['line'], element['offset'], '<TYPE> str', ['str'],
+                          element['line'], element['offset'], element['val_id'], ['str']])
         elif element['opcode'] == 'BUILD_TUPLE':
             tuple_str = ''
             elt_ids = [f"v{item.id}" for item in element['elts']]
@@ -565,8 +567,29 @@ def solving_funcs(result, unsolved_funcs, impacted_terms):
                 impacted_terms.append(k)
             break
 
+
+def serialize(edges):
+    res = []
+    for edge in edges:
+        res.append({
+                        "from": {
+                            "line": edge[0],
+                            "offset": edge[1],
+                            "name": edge[2],
+                            "type": [t.__repr__() for t in edge[3]]
+                        },
+                        "to": {
+                            "line": edge[4],
+                            "offset": edge[5],
+                            "name": edge[6],
+                            "type": [t.__repr__() for t in edge[7]]
+                        }
+                    })
+    return res
+
+
 def calc_ann_impact(opcode_list):
-    ann_impact_res = []
+    # ann_impact_res = []
     edges = draw_type_inference_graph(opcode_list)
     filename = ''
     for opcode in opcode_list:
@@ -574,31 +597,41 @@ def calc_ann_impact(opcode_list):
             filename = opcode['filename']
             break
     if filename != '':
-        slots = get_all_annotation_slots(filename)
-        for line, offset, slot in slots:
-            impacted_terms = [(line, offset, slot)]
-            unsolved_funcs = {}
-            for edge in edges:
-                if slot_exists(strip_tag(edge[2]), unsolved_funcs.keys()):
-                    solving_funcs(strip_tag(edge[2]), unsolved_funcs, impacted_terms)
-                if get_tag(edge[2]) in ['<IDENT>', '<ITER>', '<TUPLE>']:
-                    if slot_exists(strip_tag(edge[2]), impacted_terms) and not slot_exists(strip_tag(edge[6]), impacted_terms):
-                        impacted_terms.append((edge[4], edge[5], strip_tag(edge[6])))
-                elif get_tag(edge[2]) in ['<FUNC>', '<ARG>']:
-                    if not slot_exists(strip_tag(edge[6]), unsolved_funcs.keys()):
-                        unsolved_funcs[(edge[4], edge[5], strip_tag(edge[6]))] = [(edge[0], edge[1], strip_tag(edge[2]), edge[3])]
-                    else:
-                        unsolved_funcs[(edge[4], edge[5], strip_tag(edge[6]))].append((edge[0], edge[1], strip_tag(edge[2]), edge[3]))
-            for key in unsolved_funcs:
-                solving_funcs(key[2], unsolved_funcs, impacted_terms)
-            cleaned_impacted_terms = [term for term in impacted_terms if term[2] != slot and slot_exists(term[2], slots)]
-            if len(cleaned_impacted_terms) > 0:
-                ann_impact_res.append({'filename': filename, 'line': line, 'offset': offset, 'slot': slot, 'annotation_impact': len(cleaned_impacted_terms),
-                       'terms_with_potential_type_updates': cleaned_impacted_terms})
-        sorted_data = sorted(ann_impact_res, key=lambda x: x['annotation_impact'], reverse=True)
-        with open(filename.replace('.py', f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_ai"), 'w') as f:
-            for ann_impact in sorted_data:
-                print(ann_impact, file=f)
+        try:
+            with open(filename.replace('.py', f"_T{datetime.now().strftime('%Y%m%d_%H%M%S')}_graph.json"), 'w') as f:
+                json.dump(serialize(edges), f, indent=4)
+            print("Data successfully written to 'data.json'")
+        except TypeError as e:
+            print("Error: Data contains non-serializable types.")
+            print(f"Details: {e}")
+        except Exception as e:
+            print("An unexpected error occurred.")
+            print(f"Details: {e}")
+        # slots = get_all_annotation_slots(filename)
+        # for line, offset, slot in slots:
+        #     impacted_terms = [(line, offset, slot)]
+        #     unsolved_funcs = {}
+        #     for edge in edges:
+        #         if slot_exists(strip_tag(edge[2]), unsolved_funcs.keys()):
+        #             solving_funcs(strip_tag(edge[2]), unsolved_funcs, impacted_terms)
+        #         if get_tag(edge[2]) in ['<IDENT>', '<ITER>', '<TUPLE>']:
+        #             if slot_exists(strip_tag(edge[2]), impacted_terms) and not slot_exists(strip_tag(edge[6]), impacted_terms):
+        #                 impacted_terms.append((edge[4], edge[5], strip_tag(edge[6])))
+        #         elif get_tag(edge[2]) in ['<FUNC>', '<ARG>']:
+        #             if not slot_exists(strip_tag(edge[6]), unsolved_funcs.keys()):
+        #                 unsolved_funcs[(edge[4], edge[5], strip_tag(edge[6]))] = [(edge[0], edge[1], strip_tag(edge[2]), edge[3])]
+        #             else:
+        #                 unsolved_funcs[(edge[4], edge[5], strip_tag(edge[6]))].append((edge[0], edge[1], strip_tag(edge[2]), edge[3]))
+        #     for key in unsolved_funcs:
+        #         solving_funcs(key[2], unsolved_funcs, impacted_terms)
+        #     cleaned_impacted_terms = [term for term in impacted_terms if term[2] != slot and slot_exists(term[2], slots)]
+        #     if len(cleaned_impacted_terms) > 0:
+        #         ann_impact_res.append({'filename': filename, 'line': line, 'offset': offset, 'slot': slot, 'annotation_impact': len(cleaned_impacted_terms),
+        #                'terms_with_potential_type_updates': cleaned_impacted_terms})
+        # sorted_data = sorted(ann_impact_res, key=lambda x: x['annotation_impact'], reverse=True)
+        # with open(filename.replace('.py', f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_ai"), 'w') as f:
+        #     for ann_impact in sorted_data:
+        #         print(ann_impact, file=f)
 
     # try:
     #     G = nx.DiGraph()
