@@ -43,7 +43,6 @@ class TypeInferenceGraphTest(test_base.BaseTest):
 
     def test_user_defined_function_call(self):
         # todo: arg offset and ret line and offset
-        # todo: ret -> res
         # todo: Edges in TypeInferenceGraph shouldn't be sorted by line,
         #  which might Lower Annotation Impact across user-defined function calls.
         #  Try #1 not sorting it and #2 traversing the graph twice to see if
@@ -70,3 +69,4 @@ class TypeInferenceGraphTest(test_base.BaseTest):
         self.assertTrue(has_edge(edges, 2, 0, '<PARAM> my_sum.b', 3, 15, '<IDENT> my_sum.b'))
         self.assertTrue(has_edge(edges, 3, 11, '<IDENT> my_sum.a', 3, 4, '<RET> my_sum.return'))
         self.assertTrue(has_edge(edges, 3, 15, '<IDENT> my_sum.b', 3, 4, '<RET> my_sum.return'))
+        self.assertTrue(has_edge(edges, 3, 4, '<RET> my_sum.return', 7, 0, '<IDENT> res'))

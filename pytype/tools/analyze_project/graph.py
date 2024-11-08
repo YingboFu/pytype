@@ -9,20 +9,17 @@ from pytype.tools.analyze_project.extract_annotation import get_all_annotation_s
 
 opcode_list = []  # recording all opcodes to draw the type inference graph
 
-def remove_module_str(names):
-    res = []
-    for name in names:
-        if strip_tag(name).startswith('<module>.'):
-            res.append(f"{get_tag(name)} {strip_tag(name)[len('<module>.'):]}")
-        else:
-            res.append(name)
-    return res
+def remove_module_str(name):
+    if strip_tag(name).startswith('<module>.'):
+        return f"{get_tag(name)} {strip_tag(name)[len('<module>.'):]}"
+    else:
+        return name
 
 def edge_in(edge, ret):
     exist = False
     for e in ret:
-        if (e[0] == edge[0] and e[1] == edge[1] and strip_tag(e[2]) == strip_tag(edge[2])
-                and e[4] == edge[4] and e[5] == edge[5] and strip_tag(e[6]) == strip_tag(edge[6])):
+        if (e[0] == edge[0] and e[1] == edge[1] and strip_tag(remove_module_str(e[2])) == strip_tag(remove_module_str(edge[2]))
+                and e[4] == edge[4] and e[5] == edge[5] and strip_tag(remove_module_str(e[6])) == strip_tag(remove_module_str(edge[6]))):
             exist = True
     return exist
 
@@ -38,7 +35,7 @@ def clean_edges(edges):
             continue
         if edge_in(edge, ret):
             continue
-        edge[2], edge[6] = remove_module_str([edge[2], edge[6]])
+        edge[2], edge[6] = remove_module_str(edge[2]), remove_module_str(edge[6])
         ret.append(edge)
     return ret
 
@@ -144,13 +141,17 @@ def call_opcode_handler(edges, element, opcode_list):
         edges.append([element['line'], element['offset'], f"<DICT> v{element['ret'].id}", element['ret'].data,
                       element['line'], element['offset'], f"v{element['ret'].id}", element['ret'].data])
     elif last_opcode['opcode'] == 'RETURN_VALUE' and last_opcode['value_data'] == element['ret'].data:
+        # handling user-defined function calls
         for edge in edges:
             if edge[6] == last_opcode['value_id']:
-                edge[4] = element['line']
-                edge[5] = element['offset']
-                edge[6] = f"v{element['ret'].id}"
-                edge[7] = element['ret'].data
+                edge[4] = last_opcode['line']
+                edge[5] = last_opcode['offset']
+                edge[6] = f"<RET> {last_opcode['fullname']}.return"
+                edge[7] = last_opcode['value_data']
+                edges.append([last_opcode['line'], last_opcode['offset'], f"<RET> {last_opcode['fullname']}.return", last_opcode['value_data'],
+                              element['line'], element['offset'], f"v{element['ret'].id}", element['ret'].data])
     else:
+        # handling external function calls
         for edge in edges:
             if edge[6] == f"v{element['funcv'].id}":
                 if edge[2].split('.')[-1] == 'replace':
@@ -546,7 +547,7 @@ def draw_type_inference_graph(opcode_list):
                         if to_be_removed:
                             edges.remove(to_be_removed)
     print('====all-edges====')
-    for edge in sorted(edges, key=lambda x: x[0]):
+    for edge in edges:
         print(edge)
     print('====all-edges====')
     edges_clean = clean_edges(edges)
