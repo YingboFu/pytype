@@ -44,7 +44,6 @@ class TypeInferenceGraphTest(test_base.BaseTest):
     def test_user_defined_function_call(self):
         # todo: arg offset and ret line and offset
         # todo: ret -> res
-        # todo: 'my_sum.a'? <ARG>?
         # todo: Edges in TypeInferenceGraph shouldn't be sorted by line,
         #  which might Lower Annotation Impact across user-defined function calls.
         #  Try #1 not sorting it and #2 traversing the graph twice to see if
@@ -65,9 +64,9 @@ class TypeInferenceGraphTest(test_base.BaseTest):
         self.assertTrue(has_edge(edges, 6, 4, '<CONST> 4', 6, 0, '<IDENT> y'))
         self.assertTrue(has_edge(edges, 5, 0, '<IDENT> x', 7, 13, '<IDENT> x'))
         self.assertTrue(has_edge(edges, 6, 0, '<IDENT> y', 7, 16, '<IDENT> y'))
-        self.assertTrue(has_edge(edges, 7, 13, '<IDENT> x', 2, 0, 'my_sum.a'))
-        self.assertTrue(has_edge(edges, 7, 16, '<IDENT> y', 2, 0, 'my_sum.b'))
-        self.assertTrue(has_edge(edges, 2, 0, 'my_sum.a', 3, 11, '<IDENT> my_sum.a'))
-        self.assertTrue(has_edge(edges, 2, 0, 'my_sum.b', 3, 15, '<IDENT> my_sum.b'))
+        self.assertTrue(has_edge(edges, 7, 13, '<IDENT> x', 2, 0, '<PARAM> my_sum.a'))
+        self.assertTrue(has_edge(edges, 7, 16, '<IDENT> y', 2, 0, '<PARAM> my_sum.b'))
+        self.assertTrue(has_edge(edges, 2, 0, '<PARAM> my_sum.a', 3, 11, '<IDENT> my_sum.a'))
+        self.assertTrue(has_edge(edges, 2, 0, '<PARAM> my_sum.b', 3, 15, '<IDENT> my_sum.b'))
         self.assertTrue(has_edge(edges, 3, 11, '<IDENT> my_sum.a', 3, 4, '<RET> my_sum.return'))
         self.assertTrue(has_edge(edges, 3, 15, '<IDENT> my_sum.b', 3, 4, '<RET> my_sum.return'))

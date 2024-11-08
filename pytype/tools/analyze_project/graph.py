@@ -534,21 +534,27 @@ def draw_type_inference_graph(opcode_list):
             for old, new in element['old_new_var_map']:
                 for k,v in element['callargs'].items():
                     if f"v{v.id}" == new:
+                        to_be_removed = []
                         for edge in edges:
                             if strip_tag(edge[6]) == old and not re.fullmatch(r"\.\d+", k):
                                 for e in edges:
                                     if e[6] == f"<PARAM> {element['fullname']}.{k}" and e[2] == "<TYPE> Noanno":
-                                        edge[4:6] = e[4:6]
-                                        edge[6] = get_tag(edge[6]) + f"{element['fullname']}.{k}"
-                                        edges.remove(e)
+                                        edge[4], edge[5], edge[6] = e[4], e[5], e[6]
+                                        to_be_removed = e
                                         break
-
+                        # remove the 'noanno' --> para placeholder
+                        if to_be_removed:
+                            edges.remove(to_be_removed)
+    print('====all-edges====')
+    for edge in sorted(edges, key=lambda x: x[0]):
+        print(edge)
+    print('====all-edges====')
     edges_clean = clean_edges(edges)
     print('====edges====')
-    for edge in sorted(edges_clean, key=lambda x: x[0]):
+    for edge in edges_clean:
         print(edge)
     print('====edges====')
-    return sorted(edges_clean, key=lambda x: x[0])
+    return edges_clean
 
 def has_type(data):
     return not isinstance(data[0], Unknown) and not isinstance(data[0], Unsolvable)
