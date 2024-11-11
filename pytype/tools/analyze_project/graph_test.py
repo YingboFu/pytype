@@ -87,3 +87,29 @@ class TypeInferenceGraphTest(test_base.BaseTest):
         self.assertTrue(has_edge(edges, 3, 11, '<IDENT> to_str.str(value)', 3, 11, '<IDENT> to_str.str(value).strip'))
         self.assertTrue(has_edge(edges, 3, 11, '<FUNC> to_str.str(value).strip', 3, 11, '<IDENT> to_str.str(value).strip()'))
         self.assertTrue(has_edge(edges, 3, 11, '<IDENT> to_str.str(value).strip()', 3, 4, '<RET> to_str.return'))
+
+    def test_for_loop_and_append(self):
+        opcode_list.clear()
+        source = """
+
+        def _win32_process_path_backslash(value):
+            result = []
+            for ix, char in enumerate(value):
+                result.append(char)
+            return result
+        """
+        self.Infer(source)
+        edges = draw_type_inference_graph(opcode_list)
+        self.assertTrue(has_edge(edges, 2, 0, '<TYPE> Noanno', 2, 0, '<PARAM> _win32_process_path_backslash.value'))
+        self.assertTrue(has_edge(edges, 3, 13, '<CONST> []', 3, 4, '<IDENT> _win32_process_path_backslash.result'))
+        self.assertTrue(has_edge(edges, 4, 20, '<FUNC> _win32_process_path_backslash.enumerate', 4, 20, '<IDENT> _win32_process_path_backslash.enumerate(value)'))
+        self.assertTrue(has_edge(edges, 2, 0, '<PARAM> _win32_process_path_backslash.value', 4, 30, '<IDENT> _win32_process_path_backslash.value'))
+        self.assertTrue(has_edge(edges, 4, 30, '<ARG> _win32_process_path_backslash.value', 4, 20, '<IDENT> _win32_process_path_backslash.enumerate(value)'))
+        self.assertTrue(has_edge(edges, 4, 20, '<IDENT> _win32_process_path_backslash.enumerate(value)', 4, 8, '<ITER> v573'))
+        self.assertTrue(has_edge(edges, 4, 8, '<ITER> v573', 4, 12, '<IDENT> _win32_process_path_backslash.char'))
+        self.assertTrue(has_edge(edges, 4, 8, '<ITER> v573', 4, 8, '<IDENT> _win32_process_path_backslash.ix'))
+        self.assertTrue(has_edge(edges, 3, 4, '<IDENT> _win32_process_path_backslash.result', 5, 8, '<IDENT> _win32_process_path_backslash.result'))
+        self.assertTrue(has_edge(edges, 4, 12, '<IDENT> _win32_process_path_backslash.char', 5, 22, '<IDENT> _win32_process_path_backslash.char'))
+        self.assertTrue(has_edge(edges, 5, 22, '<IDENT> _win32_process_path_backslash.char', 5, 8, '<IDENT> _win32_process_path_backslash.result'))
+        self.assertTrue(has_edge(edges, 5, 8, '<IDENT> _win32_process_path_backslash.result', 6, 11, '<IDENT> _win32_process_path_backslash.result'))
+        self.assertTrue(has_edge(edges, 6, 11, '<IDENT> _win32_process_path_backslash.result', 6, 4, '<RET> _win32_process_path_backslash.return'))

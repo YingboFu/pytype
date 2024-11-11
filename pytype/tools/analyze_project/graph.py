@@ -142,6 +142,14 @@ def call_opcode_handler(edges, element, opcode_list):
                 edge[7] = last_opcode['value_data']
                 edges.append([last_opcode['line'], last_opcode['offset'], f"<RET> {last_opcode['fullname']}.return", last_opcode['value_data'],
                               element['line'], element['offset'], f"v{element['ret'].id}", element['ret'].data])
+    elif last_opcode['opcode'] == 'FOR_ITER' and last_opcode['func_id'] == f"v{element['funcv'].id}":
+        # handling FOR_ITER
+        for edge in edges:
+            if edge[6] == f"v{element['funcv'].id}":
+                edge[4] = element['line']
+                edge[5] = element['offset']
+                edge[6] = f"v{element['ret'].id}"
+                edge[7] = element['ret'].data
     else:
         # handling external function calls
         call_str = ''
@@ -193,18 +201,19 @@ def call_opcode_handler(edges, element, opcode_list):
                         edge[3] = element['starstarargs'].data
                     call_str += f"**{strip_tag(edge[2]).replace(element['fullname']+'.', '')}, "
                     func_arg_ids.append(f"v{element['starstarargs'].id}")
-        if call_str.endswith('('):
-            call_str += ')'
-        else:
-            call_str = call_str[:-2] + ')'
-        for edge in edges:
-            if edge[6] in func_arg_ids:
-                edge[4] = element['line']
-                edge[5] = element['offset']
-                edge[6] = f"<IDENT> {call_str}"
-                edge[7] = element['ret'].data
-        edges.append([element['line'], element['offset'], f"<IDENT> {call_str}", element['ret'].data,
-                      element['line'], element['offset'], f"v{element['ret'].id}", element['ret'].data])
+        if call_str != '':
+            if call_str.endswith('('):
+                call_str += ')'
+            else:
+                call_str = call_str[:-2] + ')'
+            for edge in edges:
+                if edge[6] in func_arg_ids:
+                    edge[4] = element['line']
+                    edge[5] = element['offset']
+                    edge[6] = f"<IDENT> {call_str}"
+                    edge[7] = element['ret'].data
+            edges.append([element['line'], element['offset'], f"<IDENT> {call_str}", element['ret'].data,
+                          element['line'], element['offset'], f"v{element['ret'].id}", element['ret'].data])
 
 def _store_fast(opcode_list, element, edges):
     for i in range(opcode_list.index(element) - 1, -1, -1):
