@@ -2446,6 +2446,8 @@ class VirtualMachine:
     count = op.arg
     state, val = state.pop()
     the_list = state.peek(count)
+    opcode_list.append({"filename": self.filename, "fullname": self.frame.f_code.qualname, "line": op.line, "offset": op.col,
+       'opcode': 'LIST_APPEND', 'item_id': f'v{val.id}', 'list_id': f'v{the_list.id}'})
     state, _ = self._call(state, the_list, "append", (val,))
     return state
 

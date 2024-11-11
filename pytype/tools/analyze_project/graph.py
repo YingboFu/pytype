@@ -113,14 +113,31 @@ def find_map_id(opcode_list, element):
         if opcode_list[i]['opcode'] == 'MAP_ADD':
             return opcode_list[i]['map_id']
 
+def find_LIST_APPEND_item(opcode_list, list_id):
+    for opcode in opcode_list:
+        if opcode['opcode'] == 'LIST_APPEND' and opcode['list_id'] == list_id:
+            return opcode['item_id']
+
 def call_opcode_handler(edges, element, opcode_list):
     last_opcode = opcode_list[opcode_list.index(element)-1]
     func_name = find_func_name(opcode_list, element)
     if func_name is not None and (func_name.endswith('<listcomp>') or func_name.endswith('<genexpr>')):
         # handling listcomp and genexpr
         last_yield_value_id = find_last_yield_value_id(opcode_list, element)
-        edges.append([element['line'], element['offset'], f"<ITER> {last_yield_value_id}", element['ret'].data,
-                      element['line'], element['offset'], f"v{element['ret'].id}", element['ret'].data])
+        if last_yield_value_id is not None:
+            edges.append([element['line'], element['offset'], f"<ITER> {last_yield_value_id}", element['ret'].data,
+                          element['line'], element['offset'], f"v{element['ret'].id}", element['ret'].data])
+        else:
+            # handling LIST_APPEND used by the compiler e.g. for [x for x in ...]
+            if last_opcode['opcode'] == 'RETURN_VALUE' and last_opcode['value_data'] == element['ret'].data:
+                item_id = find_LIST_APPEND_item(opcode_list, last_opcode['value_id'])
+                if item_id is not None:
+                    for edge in edges:
+                        if edge[6] == item_id:
+                            edge[4] = element['line']
+                            edge[5] = element['offset']
+                            edge[6] = f"v{element['ret'].id}"
+                            edge[7] = element['ret'].data
     elif func_name is not None and func_name.endswith('<dictcomp>'):
         # handling dictcomp
         map_id = find_map_id(opcode_list, element)

@@ -113,3 +113,78 @@ class TypeInferenceGraphTest(test_base.BaseTest):
         self.assertTrue(has_edge(edges, 5, 22, '<IDENT> _win32_process_path_backslash.char', 5, 8, '<IDENT> _win32_process_path_backslash.result'))
         self.assertTrue(has_edge(edges, 5, 8, '<IDENT> _win32_process_path_backslash.result', 6, 11, '<IDENT> _win32_process_path_backslash.result'))
         self.assertTrue(has_edge(edges, 6, 11, '<IDENT> _win32_process_path_backslash.result', 6, 4, '<RET> _win32_process_path_backslash.return'))
+
+    def test_slicing(self):
+        opcode_list.clear()
+        source = """
+
+        def _win32_process_path_backslash(value, ix):
+            last_char = value[ix - 1:ix]
+        """
+        self.Infer(source)
+        edges = draw_type_inference_graph(opcode_list)
+        self.assertTrue(has_edge(edges, 3, 16, '<IDENT> _win32_process_path_backslash.value', 3, 4, '<IDENT> _win32_process_path_backslash.last_char'))
+
+    def test_call_with_named_args(self):
+        opcode_list.clear()
+        source = """
+        import shlex
+        s = shlex.shlex(posix=True)
+        value = 'some random value'
+        splitter = shlex.shlex(value, posix=True)
+        """
+        self.Infer(source)
+        edges = draw_type_inference_graph(opcode_list)
+        self.assertTrue(has_edge(edges, 2, 4, '<IDENT> shlex', 2, 4, '<IDENT> shlex.shlex'))
+        self.assertTrue(has_edge(edges, 2, 4, '<FUNC> shlex.shlex', 2, 4, '<IDENT> shlex.shlex(posix=True)'))
+        self.assertTrue(has_edge(edges, 2, 22, '<ARG> True', 2, 4, '<IDENT> shlex.shlex(posix=True)'))
+        self.assertTrue(has_edge(edges, 2, 4, '<IDENT> shlex.shlex(posix=True)', 2, 0, '<IDENT> s'))
+        self.assertTrue(has_edge(edges, 4, 11, '<IDENT> shlex.shlex(value, posix=True)', 4, 0, '<IDENT> splitter'))
+
+    def test_attribute_assign(self):
+        opcode_list.clear()
+        source = """
+        import shlex
+        s = shlex.shlex(posix=True)
+        s.whitespace_split = True
+        """
+        self.Infer(source)
+        edges = draw_type_inference_graph(opcode_list)
+        self.assertTrue(has_edge(edges, 3, 21, '<CONST> True', 3, 0, '<IDENT> s.whitespace_split'))
+
+    def test_list_comprehension(self):
+        opcode_list.clear()
+        source = """
+        
+        value = 'some random text'
+        elements = [expr for expr in value.split(' ')]
+        """
+        self.Infer(source)
+        edges = draw_type_inference_graph(opcode_list)
+        self.assertTrue(has_edge(edges, 2, 8, '<CONST> some random text', 2, 0, '<IDENT> value'))
+        self.assertTrue(has_edge(edges, 2, 0, '<IDENT> value', 3, 29, '<IDENT> value'))
+        self.assertTrue(has_edge(edges, 3, 29, '<IDENT> value', 3, 29, '<IDENT> value.split'))
+        self.assertTrue(has_edge(edges, 3, 29, '<FUNC> value.split', 3, 29, '<IDENT> value.split( )'))
+        self.assertTrue(has_edge(edges, 3, 41, '<ARG>  ', 3, 29, '<IDENT> value.split( )'))
+        self.assertTrue(has_edge(edges, 3, 29, '<IDENT> value.split( )', 3, 21, '<IDENT> <listcomp>.expr'))
+        self.assertTrue(has_edge(edges, 3, 21, '<IDENT> <listcomp>.expr', 3, 12, '<IDENT> <listcomp>.expr'))
+        self.assertTrue(has_edge(edges, 3, 12, '<IDENT> <listcomp>.expr', 3, 0, '<IDENT> elements'))
+
+    def test_continuous_external_method_call(self):
+        opcode_list.clear()
+        source = """
+        
+        def to_bool(value):
+            norm = str(value).strip().lower()
+        """
+        self.Infer(source)
+        edges = draw_type_inference_graph(opcode_list)
+        self.assertTrue(has_edge(edges, 2, 0, '<TYPE> Noanno', 2, 0, '<PARAM> to_bool.value'))
+        self.assertTrue(has_edge(edges, 3, 11, '<FUNC> to_bool.str', 3, 11, '<IDENT> to_bool.str(value)'))
+        self.assertTrue(has_edge(edges, 2, 0, '<PARAM> to_bool.value', 3, 15, '<IDENT> to_bool.value'))
+        self.assertTrue(has_edge(edges, 3, 15, '<ARG> to_bool.value', 3, 11, '<IDENT> to_bool.str(value)'))
+        self.assertTrue(has_edge(edges, 3, 11, '<IDENT> to_bool.str(value)', 3, 11, '<IDENT> to_bool.str(value).strip'))
+        self.assertTrue(has_edge(edges, 3, 11, '<FUNC> to_bool.str(value).strip', 3, 11, '<IDENT> to_bool.str(value).strip()'))
+        self.assertTrue(has_edge(edges, 3, 11, '<IDENT> to_bool.str(value).strip()', 3, 11, '<IDENT> to_bool.str(value).strip().lower'))
+        self.assertTrue(has_edge(edges, 3, 11, '<FUNC> to_bool.str(value).strip().lower', 3, 11, '<IDENT> to_bool.str(value).strip().lower()'))
+        self.assertTrue(has_edge(edges, 3, 11, '<IDENT> to_bool.str(value).strip().lower()', 3, 4, '<IDENT> to_bool.norm'))
