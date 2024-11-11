@@ -70,3 +70,20 @@ class TypeInferenceGraphTest(test_base.BaseTest):
         self.assertTrue(has_edge(edges, 3, 11, '<IDENT> my_sum.a', 3, 4, '<RET> my_sum.return'))
         self.assertTrue(has_edge(edges, 3, 15, '<IDENT> my_sum.b', 3, 4, '<RET> my_sum.return'))
         self.assertTrue(has_edge(edges, 3, 4, '<RET> my_sum.return', 7, 0, '<IDENT> res'))
+
+    def test_external_function_and_method_call(self):
+        opcode_list.clear()
+        source = """
+        
+        def to_str(value):
+            return str(value).strip()
+        """
+        self.Infer(source)
+        edges = draw_type_inference_graph(opcode_list)
+        self.assertTrue(has_edge(edges, 2, 0, '<TYPE> Noanno', 2, 0, '<PARAM> to_str.value'))
+        self.assertTrue(has_edge(edges, 3, 11, '<FUNC> to_str.str', 3, 11, '<IDENT> to_str.str(value)'))
+        self.assertTrue(has_edge(edges, 2, 0, '<PARAM> to_str.value', 3, 15, '<IDENT> to_str.value'))
+        self.assertTrue(has_edge(edges, 3, 15, '<ARG> to_str.value', 3, 11, '<IDENT> to_str.str(value)'))
+        self.assertTrue(has_edge(edges, 3, 11, '<IDENT> to_str.str(value)', 3, 11, '<IDENT> to_str.str(value).strip'))
+        self.assertTrue(has_edge(edges, 3, 11, '<FUNC> to_str.str(value).strip', 3, 11, '<IDENT> to_str.str(value).strip()'))
+        self.assertTrue(has_edge(edges, 3, 11, '<IDENT> to_str.str(value).strip()', 3, 4, '<RET> to_str.return'))

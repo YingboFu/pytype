@@ -78,15 +78,7 @@ def find_obj_name_via_id_SUBSCR(opcode_list, element, edges):
         elif opcode_list[i]['opcode'] == 'CALL' and f"v{opcode_list[i]['ret'].id}" == element['obj_id']:
             for edge in edges:
                 if edge[6] == f"v{opcode_list[i]['ret'].id}":
-                    if obj_name == '':
-                        obj_name = f"{strip_tag(edge[2]).replace(element['fullname']+'.', '')}()"
-                    else:
-                        ridx = obj_name.rfind(')')
-                        if ridx != -1:
-                            if obj_name[ridx - 1] == '(':
-                                obj_name = obj_name[:ridx] + f"{strip_tag(edge[2]).replace(element['fullname']+'.', '')}" + obj_name[ridx:]
-                            else:
-                                obj_name = obj_name[:ridx] + f",{strip_tag(edge[2]).replace(element['fullname']+'.', '')}" + obj_name[ridx:]
+                    obj_name = strip_tag(edge[2]).replace(element['fullname']+'.', '')
         elif ((opcode_list[i]['opcode'] == 'LOAD_CONST' or opcode_list[i]['opcode'] == 'LOAD_FAST'
              or opcode_list[i]['opcode'] == 'LOAD_NAME' or opcode_list[i]['opcode'] == 'LOAD_FOLDED_CONST'
              or opcode_list[i]['opcode'] == 'LOAD_GLOBAL' or opcode_list[i]['opcode'] == 'LOAD_CLOSURE')
@@ -152,6 +144,8 @@ def call_opcode_handler(edges, element, opcode_list):
                               element['line'], element['offset'], f"v{element['ret'].id}", element['ret'].data])
     else:
         # handling external function calls
+        call_str = ''
+        func_arg_ids = []
         for edge in edges:
             if edge[6] == f"v{element['funcv'].id}":
                 if edge[2].split('.')[-1] == 'replace':
@@ -160,55 +154,57 @@ def call_opcode_handler(edges, element, opcode_list):
                             e[4] = element['line']
                             e[6] = f"v{element['ret'].id}"
                             return
-                edge[4] = element['line']
-                edge[5] = element['offset']
                 if last_opcode['opcode'] != 'FOR_ITER' or last_opcode['func_id'] != f"v{element['funcv'].id}":
                     edge[2] = f"<FUNC> {strip_tag(edge[2])}"
                     edge[3] = element['funcv'].data
-                edge[6] = f"v{element['ret'].id}"
-                edge[7] = element['ret'].data
+                call_str += f"{strip_tag(edge[2])}("
+                func_arg_ids.append(f"v{element['funcv'].id}")
         if element['posargs']:
             for arg in element['posargs']:
                 for edge in edges:
                     if edge[6] == f"v{arg.id}":
-                        edge[4] = element['line']
-                        edge[5] = element['offset']
                         if not edge[2].startswith('<FUNC>'):
                             edge[2] = f"<ARG> {strip_tag(edge[2])}"
                             edge[3] = arg.data
-                        edge[6] = f"v{element['ret'].id}"
-                        edge[7] = element['ret'].data
+                        call_str += f"{strip_tag(edge[2]).replace(element['fullname']+'.', '')}, "
+                        func_arg_ids.append(f"v{arg.id}")
         if element['namedargs']:
             for k, v in element['namedargs'].items():
                 for edge in edges:
                     if edge[6] == f"v{v.id}":
-                        edge[4] = element['line']
-                        edge[5] = element['offset']
                         if not edge[2].startswith('FUNC'):
                             edge[2] = f"<ARG> {strip_tag(edge[2])}"
                             edge[3] = v.data
-                        edge[6] = f"v{element['ret'].id}"
-                        edge[7] = element['ret'].data
+                        call_str += f"{k}={strip_tag(edge[2]).replace(element['fullname']+'.', '')}, "
+                        func_arg_ids.append(f"v{v.id}")
         if element['starargs']:
             for edge in edges:
                 if edge[6] == f"v{element['starargs'].id}":
-                    edge[4] = element['line']
-                    edge[5] = element['offset']
                     if not edge[2].startswith('FUNC'):
-                        edge[2] = f"<ARG> {strip_tag(edge[1])}"
+                        edge[2] = f"<ARG> {strip_tag(edge[2])}"
                         edge[3] = element['starargs'].data
-                    edge[6] = f"v{element['ret'].id}"
-                    edge[7] = element['ret'].data
+                    call_str += f"*{strip_tag(edge[2]).replace(element['fullname']+'.', '')}, "
+                    func_arg_ids.append(f"v{element['starargs'].id}")
         if element['starstarargs']:
             for edge in edges:
                 if edge[6] == f"v{element['starstarargs'].id}":
-                    edge[4] = element['line']
-                    edge[5] = element['offset']
                     if not edge[2].startswith('FUNC'):
                         edge[2] = f"<ARG> {strip_tag(edge[1])}"
                         edge[3] = element['starstarargs'].data
-                    edge[6] = f"v{element['ret'].id}"
-                    edge[7] = element['ret'].data
+                    call_str += f"**{strip_tag(edge[2]).replace(element['fullname']+'.', '')}, "
+                    func_arg_ids.append(f"v{element['starstarargs'].id}")
+        if call_str.endswith('('):
+            call_str += ')'
+        else:
+            call_str = call_str[:-2] + ')'
+        for edge in edges:
+            if edge[6] in func_arg_ids:
+                edge[4] = element['line']
+                edge[5] = element['offset']
+                edge[6] = f"<IDENT> {call_str}"
+                edge[7] = element['ret'].data
+        edges.append([element['line'], element['offset'], f"<IDENT> {call_str}", element['ret'].data,
+                      element['line'], element['offset'], f"v{element['ret'].id}", element['ret'].data])
 
 def _store_fast(opcode_list, element, edges):
     for i in range(opcode_list.index(element) - 1, -1, -1):
