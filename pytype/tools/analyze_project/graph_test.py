@@ -81,7 +81,7 @@ class TypeInferenceGraphTest(test_base.BaseTest):
         self.Infer(source)
         edges = draw_type_inference_graph(opcode_list)
         self.assertTrue(has_edge(edges, 2, 0, '<TYPE> Noanno', 2, 0, '<PARAM> to_str.value'))
-        self.assertTrue(has_edge(edges, 3, 11, '<FUNC> to_str.str', 3, 11, '<IDENT> to_str.str(value)'))
+        self.assertTrue(has_edge(edges, 3, 11, '<FUNC> str', 3, 11, '<IDENT> to_str.str(value)'))
         self.assertTrue(has_edge(edges, 2, 0, '<PARAM> to_str.value', 3, 15, '<IDENT> to_str.value'))
         self.assertTrue(has_edge(edges, 3, 15, '<ARG> to_str.value', 3, 11, '<IDENT> to_str.str(value)'))
         self.assertTrue(has_edge(edges, 3, 11, '<IDENT> to_str.str(value)', 3, 11, '<IDENT> to_str.str(value).strip'))
@@ -102,7 +102,7 @@ class TypeInferenceGraphTest(test_base.BaseTest):
         edges = draw_type_inference_graph(opcode_list)
         self.assertTrue(has_edge(edges, 2, 0, '<TYPE> Noanno', 2, 0, '<PARAM> _win32_process_path_backslash.value'))
         self.assertTrue(has_edge(edges, 3, 13, '<CONST> []', 3, 4, '<IDENT> _win32_process_path_backslash.result'))
-        self.assertTrue(has_edge(edges, 4, 20, '<FUNC> _win32_process_path_backslash.enumerate', 4, 20, '<IDENT> _win32_process_path_backslash.enumerate(value)'))
+        self.assertTrue(has_edge(edges, 4, 20, '<FUNC> enumerate', 4, 20, '<IDENT> _win32_process_path_backslash.enumerate(value)'))
         self.assertTrue(has_edge(edges, 2, 0, '<PARAM> _win32_process_path_backslash.value', 4, 30, '<IDENT> _win32_process_path_backslash.value'))
         self.assertTrue(has_edge(edges, 4, 30, '<ARG> _win32_process_path_backslash.value', 4, 20, '<IDENT> _win32_process_path_backslash.enumerate(value)'))
         self.assertTrue(has_edge(edges, 4, 20, '<IDENT> _win32_process_path_backslash.enumerate(value)', 4, 8, '<ITER> v573'))
@@ -180,7 +180,7 @@ class TypeInferenceGraphTest(test_base.BaseTest):
         self.Infer(source)
         edges = draw_type_inference_graph(opcode_list)
         self.assertTrue(has_edge(edges, 2, 0, '<TYPE> Noanno', 2, 0, '<PARAM> to_bool.value'))
-        self.assertTrue(has_edge(edges, 3, 11, '<FUNC> to_bool.str', 3, 11, '<IDENT> to_bool.str(value)'))
+        self.assertTrue(has_edge(edges, 3, 11, '<FUNC> str', 3, 11, '<IDENT> to_bool.str(value)'))
         self.assertTrue(has_edge(edges, 2, 0, '<PARAM> to_bool.value', 3, 15, '<IDENT> to_bool.value'))
         self.assertTrue(has_edge(edges, 3, 15, '<ARG> to_bool.value', 3, 11, '<IDENT> to_bool.str(value)'))
         self.assertTrue(has_edge(edges, 3, 11, '<IDENT> to_bool.str(value)', 3, 11, '<IDENT> to_bool.str(value).strip'))
@@ -188,3 +188,17 @@ class TypeInferenceGraphTest(test_base.BaseTest):
         self.assertTrue(has_edge(edges, 3, 11, '<IDENT> to_bool.str(value).strip()', 3, 11, '<IDENT> to_bool.str(value).strip().lower'))
         self.assertTrue(has_edge(edges, 3, 11, '<FUNC> to_bool.str(value).strip().lower', 3, 11, '<IDENT> to_bool.str(value).strip().lower()'))
         self.assertTrue(has_edge(edges, 3, 11, '<IDENT> to_bool.str(value).strip().lower()', 3, 4, '<IDENT> to_bool.norm'))
+
+    def test_global(self):
+        opcode_list.clear()
+        source = """
+                
+                SOURCE_TYPES = ['str', 'int', 'float', 'bool']
+                def foo():
+                    for type in SOURCE_TYPES:
+                        pass
+                """
+        self.Infer(source)
+        edges = draw_type_inference_graph(opcode_list)
+        self.assertTrue(has_edge(edges, 2, 0, '<IDENT> SOURCE_TYPES', 4, 16, '<IDENT> SOURCE_TYPES'))
+        self.assertTrue(has_edge(edges, 4, 16, '<IDENT> SOURCE_TYPES', 4, 8, '<IDENT> foo.type'))

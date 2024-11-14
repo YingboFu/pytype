@@ -11,15 +11,18 @@ opcode_list = []  # recording all opcodes to draw the type inference graph
 
 def remove_module_str(name):
     if strip_tag(name).startswith('<module>.'):
-        return f"{get_tag(name)} {strip_tag(name)[len('<module>.'):]}"
+        if get_tag(name) != '':
+            return f"{get_tag(name)} {strip_tag(name)[len('<module>.'):]}"
+        else:
+            return f"{strip_tag(name)[len('<module>.'):]}"
     else:
         return name
 
 def edge_in(edge, ret):
     exist = False
     for e in ret:
-        if (e[0] == edge[0] and e[1] == edge[1] and strip_tag(remove_module_str(e[2])) == strip_tag(remove_module_str(edge[2]))
-                and e[4] == edge[4] and e[5] == edge[5] and strip_tag(remove_module_str(e[6])) == strip_tag(remove_module_str(edge[6]))):
+        if (e[0] == edge[0] and e[1] == edge[1] and strip_tag(e[2]) == strip_tag(edge[2])
+                and e[4] == edge[4] and e[5] == edge[5] and strip_tag(e[6]) == strip_tag(edge[6])):
             exist = True
     return exist
 
@@ -35,7 +38,6 @@ def clean_edges(edges):
             continue
         if edge_in(edge, ret):
             continue
-        edge[2], edge[6] = remove_module_str(edge[2]), remove_module_str(edge[6])
         ret.append(edge)
     return ret
 
@@ -155,9 +157,9 @@ def call_opcode_handler(edges, element, opcode_list):
             if edge[6] == last_opcode['value_id']:
                 edge[4] = last_opcode['line']
                 edge[5] = last_opcode['offset']
-                edge[6] = f"<RET> {last_opcode['fullname']}.return"
+                edge[6] = remove_module_str(f"<RET> {last_opcode['fullname']}.return")
                 edge[7] = last_opcode['value_data']
-                edges.append([last_opcode['line'], last_opcode['offset'], f"<RET> {last_opcode['fullname']}.return", last_opcode['value_data'],
+                edges.append([last_opcode['line'], last_opcode['offset'], remove_module_str(f"<RET> {last_opcode['fullname']}.return"), last_opcode['value_data'],
                               element['line'], element['offset'], f"v{element['ret'].id}", element['ret'].data])
     elif last_opcode['opcode'] == 'FOR_ITER' and last_opcode['func_id'] == f"v{element['funcv'].id}":
         # handling FOR_ITER
@@ -223,6 +225,8 @@ def call_opcode_handler(edges, element, opcode_list):
                 call_str += ')'
             else:
                 call_str = call_str[:-2] + ')'
+            if element['fullname'] != '<module>' and not call_str.startswith(element['fullname']):
+                call_str = f"{element['fullname']}.{call_str}"
             for edge in edges:
                 if edge[6] in func_arg_ids:
                     edge[4] = element['line']
@@ -242,9 +246,9 @@ def _store_fast(opcode_list, element, edges):
                     edge[4] = element['line']
                     edge[5] = element['offset']
                     if element['name'] == 'self':
-                        edge[6] = f"<IDENT> {element['fullname']}.{element['value_data'][0].name}"
+                        edge[6] = remove_module_str(f"<IDENT> {element['fullname']}.{element['value_data'][0].name}")
                     else:
-                        edge[6] = f"<IDENT> {element['fullname']}.{element['name']}"
+                        edge[6] = remove_module_str(f"<IDENT> {element['fullname']}.{element['name']}")
                     edge[7] = element['value_data']
             break
 
@@ -272,12 +276,10 @@ def strip_tag(name_str):
     return ' '.join(res)
 
 def get_tag(name_str):
-    lidx = name_str.find('<')
-    ridx = name_str.find('>')
-    if lidx != -1 and ridx != -1:
-        return name_str[lidx:ridx+1]
-    else:
-        return ''
+    for s in name_str.split(' '):
+        if s.startswith('<') and s.endswith('>'):
+            return s
+    return ''
 
 def draw_type_inference_graph(opcode_list):
     opcode_list = _pre_process_opcodes(opcode_list)
@@ -290,13 +292,21 @@ def draw_type_inference_graph(opcode_list):
         if element['opcode'] == 'LOAD_CONST':
             edges.append([element['line'], element['offset'], f"<CONST> {element['raw_const']}", element['value_data'],
                           element['line'], element['offset'], element['value_id'], element['value_data']])
-        elif element['opcode'] == 'LOAD_NAME' or element['opcode'] == 'LOAD_GLOBAL' or element['opcode'] == 'LOAD_CLOSURE':
+        elif element['opcode'] == 'LOAD_NAME' or element['opcode'] == 'LOAD_CLOSURE':
             for edge in edges[::-1]:
-                if strip_tag(edge[6]) == f"{element['fullname']}.{element['name']}" and strip_tag(edge[2]) != strip_tag(edge[6]):
+                if strip_tag(edge[6]) == remove_module_str(f"{element['fullname']}.{element['name']}") and strip_tag(edge[2]) != strip_tag(edge[6]):
                     edges.append([edge[4], edge[5], edge[6], edge[7],
-                                  element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['name']}", element['value_data']])
+                                  element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{element['name']}"), element['value_data']])
                     break
-            edges.append([element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['name']}", element['value_data'],
+            edges.append([element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{element['name']}"), element['value_data'],
+                          element['line'], element['offset'], element['value_id'], element['value_data']])
+        elif element['opcode'] == 'LOAD_GLOBAL':
+            for edge in edges[::-1]:
+                if strip_tag(edge[6]) == element['name'] and strip_tag(edge[2]) != strip_tag(edge[6]):
+                    edges.append([edge[4], edge[5], edge[6], edge[7],
+                                  element['line'], element['offset'], f"<IDENT> {element['name']}", element['value_data']])
+                    break
+            edges.append([element['line'], element['offset'], f"<IDENT> {element['name']}", element['value_data'],
                           element['line'], element['offset'], element['value_id'], element['value_data']])
         elif element['opcode'] == 'LOAD_FAST':
             if re.fullmatch(r"\.\d+", element['name']):
@@ -312,16 +322,16 @@ def draw_type_inference_graph(opcode_list):
                         break
             else:
                 for edge in edges[::-1]:
-                    if strip_tag(edge[6]) == f"{element['fullname']}.{element['name']}" and strip_tag(edge[2]) != strip_tag(edge[6]):
+                    if strip_tag(edge[6]) == remove_module_str(f"{element['fullname']}.{element['name']}") and strip_tag(edge[2]) != strip_tag(edge[6]):
                         if element['name'] == 'self':
                             edges.append([edge[4], edge[5], edge[6], edge[7],
-                                          element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['value_data'][0].name}", element['value_data']])
-                            edges.append([element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['value_data'][0].name}", element['value_data'],
+                                          element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{element['value_data'][0].name}"), element['value_data']])
+                            edges.append([element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{element['value_data'][0].name}"), element['value_data'],
                                           element['line'], element['offset'], element['value_id'], element['value_data']])
                         else:
                             edges.append([edge[4], edge[5], edge[6], edge[7],
-                                          element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['name']}", element['value_data']])
-                            edges.append([element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['name']}", element['value_data'],
+                                          element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{element['name']}"), element['value_data']])
+                            edges.append([element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{element['name']}"), element['value_data'],
                                           element['line'], element['offset'], element['value_id'], element['value_data']])
                         break
         elif element['opcode'] == 'LOAD_FOLDED_CONST':
@@ -355,9 +365,9 @@ def draw_type_inference_graph(opcode_list):
                         if edge[6] == element['x_id'] or edge[6] == element['y_id']:
                             edge[4] = element['line']
                             edge[5] = element['offset']
-                            edge[6] = f"<IDENT> {element['fullname']}.{x_name}[{y_name}]"
+                            edge[6] = remove_module_str(f"<IDENT> {element['fullname']}.{x_name}[{y_name}]")
                             edge[7] = element['ret_data']
-                    edges.append([element['line'], element['offset'], f"<IDENT> {element['fullname']}.{x_name}[{y_name}]", element['ret_data'],
+                    edges.append([element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{x_name}[{y_name}]"), element['ret_data'],
                                   element['line'], element['offset'], element['ret_id'], element['ret_data']])
                 else:
                     for edge in edges:
@@ -380,14 +390,14 @@ def draw_type_inference_graph(opcode_list):
                     edges[-1][5] = element['offset']
                     edges[-1][6] = 'v0'
                 edges.append([element['line'], element['offset'], f"<TYPE> {element['annotation']}", [element['annotation']],
-                              element['line'], element['offset'], f"<IDENT> {element['fullname']}.{element['name']}", [element['annotation']]])
+                              element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{element['name']}"), [element['annotation']]])
             else:
                 found = False
                 for edge in edges:
                     if edge[6] == element['value_id']:
                         edge[4] = element['line']
                         edge[5] = element['offset']
-                        edge[6] = f"<IDENT> {element['fullname']}.{element['name']}"
+                        edge[6] = remove_module_str(f"<IDENT> {element['fullname']}.{element['name']}")
                         edge[7] = element['value_data']
                         found = True
                 if not found:
@@ -399,7 +409,7 @@ def draw_type_inference_graph(opcode_list):
                     edge[4] = element['line']
                     edge[5] = element['offset']
                     if obj_name != '':
-                        edge[6] = f"<IDENT> {element['fullname']}.{obj_name}"
+                        edge[6] = remove_module_str(f"<IDENT> {element['fullname']}.{obj_name}")
                     else:
                         edge[6] = element['obj_id']
                     edge[7] = element['obj_data']
@@ -409,14 +419,14 @@ def draw_type_inference_graph(opcode_list):
                 if edge[6] == element['val_id']:
                     edge[4] = element['line']
                     edge[5] = element['offset']
-                    edge[6] = f"<IDENT> {element['fullname']}.{obj_name}.{element['name']}"
+                    edge[6] = remove_module_str(f"<IDENT> {element['fullname']}.{obj_name}.{element['name']}")
                     edge[7] = element['val_data']
         elif element['opcode'] == 'LOAD_ATTR' or element['opcode'] == 'LOAD_METHOD':
             obj_name = find_obj_name_via_id_SUBSCR(opcode_list, element, edges)
             if obj_name == '':
                 obj_name = find_obj_name_via_data(opcode_list, element)
             if element['name'] == 'append':
-                edges.append([element['line'], element['offset'], f"<IDENT> {element['fullname']}.{obj_name}", element['obj_data'],
+                edges.append([element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{obj_name}"), element['obj_data'],
                               element['line'], element['offset'], element['value_id'], element['value_data']])
             else:
                 found = False
@@ -424,13 +434,13 @@ def draw_type_inference_graph(opcode_list):
                     if edge[6] == element['obj_id']:
                         edge[4] = element['line']
                         edge[5] = element['offset']
-                        edge[6] = f"<IDENT> {element['fullname']}.{obj_name}.{element['name']}"
+                        edge[6] = remove_module_str(f"<IDENT> {element['fullname']}.{obj_name}.{element['name']}")
                         edge[7] = element['value_data']
                         found = True
                 if not found:
-                    edges.append([element['line'], element['offset'], f"<IDENT> {element['fullname']}.{obj_name}", element['obj_data'],
-                                  element['line'], element['offset'], f"<IDENT> {element['fullname']}.{obj_name}.{element['name']}", element['value_data']])
-                edges.append([element['line'], element['offset'], f"<IDENT> {element['fullname']}.{obj_name}.{element['name']}", element['value_data'],
+                    edges.append([element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{obj_name}"), element['obj_data'],
+                                  element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{obj_name}.{element['name']}"), element['value_data']])
+                edges.append([element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{obj_name}.{element['name']}"), element['value_data'],
                               element['line'], element['offset'], element['value_id'], element['value_data']])
         elif element['opcode'] == 'CALL':
             call_opcode_handler(edges, element, opcode_list)
@@ -497,7 +507,7 @@ def draw_type_inference_graph(opcode_list):
                     if edge[6] == element['value_id']:
                         edge[4] = element['line']
                         edge[5] = element['offset']
-                        edge[6] = f"<RET> {element['fullname']}.return"
+                        edge[6] = remove_module_str(f"<RET> {element['fullname']}.return")
                         edge[7] = element['value_data']
         elif element['opcode'] == 'COMPARE_OP':
             for edge in edges:
@@ -535,9 +545,9 @@ def draw_type_inference_graph(opcode_list):
                 if edge[6] in elt_ids:
                     edge[4] = element['line']
                     edge[5] = element['offset']
-                    edge[6] = f"<TUPLE> {element['fullname']}.{tuple_str}"
+                    edge[6] = remove_module_str(f"<TUPLE> {element['fullname']}.{tuple_str}")
                     edge[7] = element['value_data']
-            edges.append([element['line'], element['offset'], f"<TUPLE> {element['fullname']}.{tuple_str}", element['value_data'],
+            edges.append([element['line'], element['offset'], remove_module_str(f"<TUPLE> {element['fullname']}.{tuple_str}"), element['value_data'],
                           element['line'], element['offset'], element['value_id'], element['value_data']])
         elif element['opcode'] == 'YIELD_VALUE':
             for edge in edges:
@@ -561,7 +571,7 @@ def draw_type_inference_graph(opcode_list):
                         for edge in edges:
                             if strip_tag(edge[6]) == old and not re.fullmatch(r"\.\d+", k):
                                 for e in edges:
-                                    if e[6] == f"<PARAM> {element['fullname']}.{k}" and e[2] == "<TYPE> Noanno":
+                                    if e[6] == remove_module_str(f"<PARAM> {element['fullname']}.{k}") and e[2] == "<TYPE> Noanno":
                                         edge[4], edge[5], edge[6] = e[4], e[5], e[6]
                                         to_be_removed = e
                                         break
