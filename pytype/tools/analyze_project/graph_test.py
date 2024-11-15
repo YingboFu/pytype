@@ -189,16 +189,33 @@ class TypeInferenceGraphTest(test_base.BaseTest):
         self.assertTrue(has_edge(edges, 3, 11, '<FUNC> to_bool.str(value).strip().lower', 3, 11, '<IDENT> to_bool.str(value).strip().lower()'))
         self.assertTrue(has_edge(edges, 3, 11, '<IDENT> to_bool.str(value).strip().lower()', 3, 4, '<IDENT> to_bool.norm'))
 
-    def test_global(self):
+    def test_load_global(self):
         opcode_list.clear()
         source = """
-                
-                SOURCE_TYPES = ['str', 'int', 'float', 'bool']
-                def foo():
-                    for type in SOURCE_TYPES:
-                        pass
-                """
+
+        SOURCE_TYPES = ['str', 'int', 'float', 'bool']
+        def foo():
+            for type in SOURCE_TYPES:
+                pass
+        """
         self.Infer(source)
         edges = draw_type_inference_graph(opcode_list)
         self.assertTrue(has_edge(edges, 2, 0, '<IDENT> SOURCE_TYPES', 4, 16, '<IDENT> SOURCE_TYPES'))
         self.assertTrue(has_edge(edges, 4, 16, '<IDENT> SOURCE_TYPES', 4, 8, '<IDENT> foo.type'))
+
+    def test_store_global(self):
+        opcode_list.clear()
+        source = """
+
+        VAR = []
+        def foo():
+            x = 'text'
+            global VAR
+            VAR = x
+        """
+        self.Infer(source)
+        edges = draw_type_inference_graph(opcode_list)
+        self.assertTrue(has_edge(edges, 2, 6, '<CONST> []', 2, 0, '<IDENT> VAR'))
+        self.assertTrue(has_edge(edges, 4, 8, '<CONST> text', 4, 4, '<IDENT> foo.x'))
+        self.assertTrue(has_edge(edges, 4, 4, '<IDENT> foo.x', 6, 10, '<IDENT> foo.x'))
+        self.assertTrue(has_edge(edges, 6, 10, '<IDENT> foo.x', 6, 4, '<IDENT> VAR'))

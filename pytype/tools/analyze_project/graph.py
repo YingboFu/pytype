@@ -38,6 +38,8 @@ def clean_edges(edges):
             continue
         if edge_in(edge, ret):
             continue
+        if edge[0] == edge[4] and edge[1] == edge[5] and edge[2] == edge[6] and edge[3] == edge[7]:
+            continue
         ret.append(edge)
     return ret
 
@@ -236,7 +238,7 @@ def call_opcode_handler(edges, element, opcode_list):
             edges.append([element['line'], element['offset'], f"<IDENT> {call_str}", element['ret'].data,
                           element['line'], element['offset'], f"v{element['ret'].id}", element['ret'].data])
 
-def _store_fast(opcode_list, element, edges):
+def _store_fast(opcode_list, element, edges, opcode):
     for i in range(opcode_list.index(element) - 1, -1, -1):
         if ((opcode_list[i]['opcode'] == 'LOAD_CONST' or opcode_list[i]['opcode'] == 'LOAD_FAST'
              or opcode_list[i]['opcode'] == 'LOAD_NAME' or opcode_list[i]['opcode'] == 'LOAD_FOLDED_CONST'
@@ -246,9 +248,15 @@ def _store_fast(opcode_list, element, edges):
                     edge[4] = element['line']
                     edge[5] = element['offset']
                     if element['name'] == 'self':
-                        edge[6] = remove_module_str(f"<IDENT> {element['fullname']}.{element['value_data'][0].name}")
+                        if opcode == 'STORE_GLOBAL':
+                            edge[6] = f"<IDENT> {element['value_data'][0].name}"
+                        else:
+                            edge[6] = remove_module_str(f"<IDENT> {element['fullname']}.{element['value_data'][0].name}")
                     else:
-                        edge[6] = remove_module_str(f"<IDENT> {element['fullname']}.{element['name']}")
+                        if opcode == 'STORE_GLOBAL':
+                            edge[6] = f"<IDENT> {element['name']}"
+                        else:
+                            edge[6] = remove_module_str(f"<IDENT> {element['fullname']}.{element['name']}")
                     edge[7] = element['value_data']
             break
 
@@ -383,6 +391,25 @@ def draw_type_inference_graph(opcode_list):
                         edge[5] = element['offset']
                         edge[6] = element['ret_id']
                         edge[7] = element['ret_data']
+        elif element['opcode'] == 'STORE_GLOBAL':
+            if 'annotation' in element:
+                if strip_tag(edges[-1][6]).endswith('return'):
+                    edges[-1][4] = element['line']
+                    edges[-1][5] = element['offset']
+                    edges[-1][6] = 'v0'
+                edges.append([element['line'], element['offset'], f"<TYPE> {element['annotation']}", [element['annotation']],
+                              element['line'], element['offset'], f"<IDENT> {element['name']}", [element['annotation']]])
+            else:
+                found = False
+                for edge in edges:
+                    if edge[6] == element['value_id']:
+                        edge[4] = element['line']
+                        edge[5] = element['offset']
+                        edge[6] = f"<IDENT> {element['name']}"
+                        edge[7] = element['value_data']
+                        found = True
+                if not found:
+                    _store_fast(opcode_list, element, edges, 'STORE_GLOBAL')
         elif element['opcode'] == 'STORE_NAME':
             if 'annotation' in element:
                 if strip_tag(edges[-1][6]).endswith('return'):
@@ -401,7 +428,7 @@ def draw_type_inference_graph(opcode_list):
                         edge[7] = element['value_data']
                         found = True
                 if not found:
-                    _store_fast(opcode_list, element, edges)
+                    _store_fast(opcode_list, element, edges, 'STORE_NAME')
         elif element['opcode'] == 'STORE_SUBSCR':
             obj_name = find_obj_name_via_id(opcode_list, element)
             for edge in edges:

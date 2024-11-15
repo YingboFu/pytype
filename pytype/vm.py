@@ -1112,12 +1112,20 @@ class VirtualMachine:
     else:
       value = self._get_value_from_annotations(state, op, name, local, orig_val)
     state = state.forward_cfg_node(f"Store:{name}")
-    if op.annotation is not None:
-      opcode_list.append({"filename": self.filename, "fullname": self.frame.f_code.qualname, "line": op.line, "offset": op.col, "opcode": "STORE_NAME", "name": name,
-                          "annotation": op.annotation})
+    if op.name == 'STORE_GLOBAL':
+      if op.annotation is not None:
+        opcode_list.append({"filename": self.filename, "fullname": self.frame.f_code.qualname, "line": op.line, "offset": op.col,
+           "opcode": "STORE_GLOBAL", "name": name, "annotation": op.annotation})
+      else:
+        opcode_list.append({"filename": self.filename, "fullname": self.frame.f_code.qualname, "line": op.line, "offset": op.col,
+           "opcode": "STORE_GLOBAL", "name": name, "value_id": f"v{value.id}", "value_data": value.data})
     else:
-      opcode_list.append({"filename": self.filename, "fullname": self.frame.f_code.qualname, "line": op.line, "offset": op.col, "opcode": "STORE_NAME", "name": name,
-                          "value_id": f"v{value.id}", "value_data": value.data})
+      if op.annotation is not None:
+          opcode_list.append({"filename": self.filename, "fullname": self.frame.f_code.qualname, "line": op.line, "offset": op.col, "opcode": "STORE_NAME", "name": name,
+                              "annotation": op.annotation})
+      else:
+        opcode_list.append({"filename": self.filename, "fullname": self.frame.f_code.qualname, "line": op.line, "offset": op.col, "opcode": "STORE_NAME", "name": name,
+                            "value_id": f"v{value.id}", "value_data": value.data})
     state = self._store_value(state, name, value, local)
     self.trace_opcode(op, name, value)
     return state
