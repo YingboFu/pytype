@@ -74,6 +74,7 @@ def find_obj_name_via_data(opcode_list, element):
 
 def find_obj_name_via_id_SUBSCR(opcode_list, element, edges):
     obj_name = ''
+    is_global = False
     for i in range(opcode_list.index(element) - 1, -1, -1):
         if opcode_list[i]['opcode'] == 'BINARY_OP' and opcode_list[i]['ret_id'] == element['obj_id']:
             for edge in edges:
@@ -87,6 +88,8 @@ def find_obj_name_via_id_SUBSCR(opcode_list, element, edges):
              or opcode_list[i]['opcode'] == 'LOAD_NAME' or opcode_list[i]['opcode'] == 'LOAD_FOLDED_CONST'
              or opcode_list[i]['opcode'] == 'LOAD_GLOBAL' or opcode_list[i]['opcode'] == 'LOAD_CLOSURE')
               and opcode_list[i]['value_id'] == element['obj_id']):
+            if opcode_list[i]['opcode'] == 'LOAD_GLOBAL':
+                is_global = True
             if 'name' in opcode_list[i]:
                 if opcode_list[i]['name'] == 'self':
                     obj_name = element['obj_data'][0].name
@@ -100,7 +103,7 @@ def find_obj_name_via_id_SUBSCR(opcode_list, element, edges):
             for edge in edges:
                 if edge[6] == opcode_list[i]['value_id']:
                     obj_name = strip_tag(edge[2]).replace(element['fullname']+'.', '')
-    return obj_name
+    return obj_name, is_global
 
 def find_func_name(opcode_list, element):
     for i in range(opcode_list.index(element) - 1, -1, -1):
@@ -449,12 +452,16 @@ def draw_type_inference_graph(opcode_list):
                     edge[6] = remove_module_str(f"<IDENT> {element['fullname']}.{obj_name}.{element['name']}")
                     edge[7] = element['val_data']
         elif element['opcode'] == 'LOAD_ATTR' or element['opcode'] == 'LOAD_METHOD':
-            obj_name = find_obj_name_via_id_SUBSCR(opcode_list, element, edges)
+            obj_name, is_global = find_obj_name_via_id_SUBSCR(opcode_list, element, edges)
             if obj_name == '':
                 obj_name = find_obj_name_via_data(opcode_list, element)
             if element['name'] == 'append':
-                edges.append([element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{obj_name}"), element['obj_data'],
-                              element['line'], element['offset'], element['value_id'], element['value_data']])
+                if is_global:
+                    edges.append([element['line'], element['offset'], f"<IDENT> {obj_name}", element['obj_data'],
+                                  element['line'], element['offset'], element['value_id'], element['value_data']])
+                else:
+                    edges.append([element['line'], element['offset'], remove_module_str(f"<IDENT> {element['fullname']}.{obj_name}"), element['obj_data'],
+                                  element['line'], element['offset'], element['value_id'], element['value_data']])
             else:
                 found = False
                 for edge in edges:

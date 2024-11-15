@@ -219,3 +219,21 @@ class TypeInferenceGraphTest(test_base.BaseTest):
         self.assertTrue(has_edge(edges, 4, 8, '<CONST> text', 4, 4, '<IDENT> foo.x'))
         self.assertTrue(has_edge(edges, 4, 4, '<IDENT> foo.x', 6, 10, '<IDENT> foo.x'))
         self.assertTrue(has_edge(edges, 6, 10, '<IDENT> foo.x', 6, 4, '<IDENT> VAR'))
+
+    def test_append_global(self):
+        opcode_list.clear()
+        source = """
+
+        L = []
+        def foo():
+            x = 'text'
+            global L
+            L.append(x)
+        """
+        self.Infer(source)
+        edges = draw_type_inference_graph(opcode_list)
+        self.assertTrue(has_edge(edges, 2, 4, '<CONST> []', 2, 0, '<IDENT> L'))
+        self.assertTrue(has_edge(edges, 4, 8, '<CONST> text', 4, 4, '<IDENT> foo.x'))
+        self.assertTrue(has_edge(edges, 2, 0, '<IDENT> L', 6, 4, '<IDENT> L'))
+        self.assertTrue(has_edge(edges, 4, 4, '<IDENT> foo.x', 6, 13, '<IDENT> foo.x'))
+        self.assertTrue(has_edge(edges, 6, 13, '<IDENT> foo.x', 6, 4, '<IDENT> L'))
