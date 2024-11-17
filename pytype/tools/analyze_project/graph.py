@@ -178,8 +178,10 @@ def call_opcode_handler(edges, element, opcode_list):
         # handling external function calls
         call_str = ''
         func_arg_ids = []
+        func_found = False
         for edge in edges:
             if edge[6] == f"v{element['funcv'].id}":
+                func_found = True
                 if edge[2].split('.')[-1] == 'replace':
                     for e in edges[::-1]:
                         if e[6] == edge[2]:
@@ -225,21 +227,29 @@ def call_opcode_handler(edges, element, opcode_list):
                         edge[3] = element['starstarargs'].data
                     call_str += f"**{strip_tag(edge[2]).replace(element['fullname']+'.', '')}, "
                     func_arg_ids.append(f"v{element['starstarargs'].id}")
-        if call_str != '':
-            if call_str.endswith('('):
-                call_str += ')'
-            else:
-                call_str = call_str[:-2] + ')'
-            if element['fullname'] != '<module>' and not call_str.startswith(element['fullname']):
-                call_str = f"{element['fullname']}.{call_str}"
+        if func_found:
+            if call_str != '':
+                if call_str.endswith('('):
+                    call_str += ')'
+                else:
+                    call_str = call_str[:-2] + ')'
+                if element['fullname'] != '<module>' and not call_str.startswith(element['fullname']):
+                    call_str = f"{element['fullname']}.{call_str}"
+                for edge in edges:
+                    if edge[6] in func_arg_ids:
+                        edge[4] = element['line']
+                        edge[5] = element['offset']
+                        edge[6] = f"<IDENT> {call_str}"
+                        edge[7] = element['ret'].data
+                edges.append([element['line'], element['offset'], f"<IDENT> {call_str}", element['ret'].data,
+                              element['line'], element['offset'], f"v{element['ret'].id}", element['ret'].data])
+        else:
             for edge in edges:
                 if edge[6] in func_arg_ids:
                     edge[4] = element['line']
                     edge[5] = element['offset']
-                    edge[6] = f"<IDENT> {call_str}"
+                    edge[6] = f"v{element['ret'].id}"
                     edge[7] = element['ret'].data
-            edges.append([element['line'], element['offset'], f"<IDENT> {call_str}", element['ret'].data,
-                          element['line'], element['offset'], f"v{element['ret'].id}", element['ret'].data])
 
 def _store_fast(opcode_list, element, edges, opcode):
     for i in range(opcode_list.index(element) - 1, -1, -1):
