@@ -304,10 +304,6 @@ def get_tag(name_str):
 
 def draw_type_inference_graph(opcode_list):
     opcode_list = _pre_process_opcodes(opcode_list)
-    print('====opcodes====')
-    for opcode in opcode_list:
-        print(opcode)
-    print('====opcodes====')
     edges = []
     for element in opcode_list:
         if element['opcode'] == 'LOAD_CONST':
@@ -622,15 +618,7 @@ def draw_type_inference_graph(opcode_list):
                         # remove the 'noanno' --> para placeholder
                         if to_be_removed:
                             edges.remove(to_be_removed)
-    print('====all-edges====')
-    for edge in edges:
-        print(edge)
-    print('====all-edges====')
     edges_clean = clean_edges(edges)
-    print('====edges====')
-    for edge in edges_clean:
-        print(edge)
-    print('====edges====')
     return edges_clean
 
 def has_type(data):
