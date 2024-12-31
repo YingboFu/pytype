@@ -223,7 +223,7 @@ def call_opcode_handler(edges, element, opcode_list):
             for edge in edges:
                 if edge[6] == f"v{element['starstarargs'].id}":
                     if not edge[2].startswith('FUNC'):
-                        edge[2] = f"<ARG> {strip_tag(edge[1])}"
+                        edge[2] = f"<ARG> {strip_tag(edge[2])}"
                         edge[3] = element['starstarargs'].data
                     call_str += f"**{strip_tag(edge[2]).replace(element['fullname']+'.', '')}, "
                     func_arg_ids.append(f"v{element['starstarargs'].id}")
