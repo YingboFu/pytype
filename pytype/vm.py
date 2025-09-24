@@ -160,6 +160,49 @@ class VirtualMachine:
     # Cache for _import_module.
     self._imported_modules_cache = {}
 
+    # ---- Fast-branch Known/Unknown side table ----
+    # var.id -> small python literal (ints/bools/short strs/tiny tuples/lists/dicts)
+    self._known: Dict[int, Any] = {}
+    self._known_container_cap = 8  # cap tiny "known" containers to avoid blowups
+    # (receiver var id, attr name) -> last stored value var
+    self._attr_table: Dict[Tuple[int, str], cfg.Variable] = {}
+
+  # ---- Fast-branch helpers ---------------------------------------------------
+  def _mk_top(self, node):
+    """Return an Unknown/Top value quickly."""
+    return self.ctx.new_unsolvable(node)
+
+  def _mark_known(self, var, py):
+    self._known[var.id] = py
+
+  def _is_known(self, var):
+    return var.id in self._known
+
+  def _known_val(self, var):
+    return self._known[var.id]
+
+  def _try_mark_known_literal(self, var, py):
+    """Mark var as Known if py is a small literal we can cheaply propagate."""
+    if isinstance(py, (int, float, bool, type(None))):
+      return self._mark_known(var, py)
+    if isinstance(py, str) and len(py) <= 64:
+      return self._mark_known(var, py)
+    if isinstance(py, (tuple, list, set)) and len(py) <= self._known_container_cap:
+      if all(isinstance(e, (int, float, bool, type(None), str)) for e in py):
+        return self._mark_known(var, tuple(py) if not isinstance(py, tuple) else py)
+    if isinstance(py, dict) and len(py) <= self._known_container_cap:
+      if all(isinstance(k, (str, int)) for k in py.keys()):
+        return self._mark_known(var, dict(py))
+
+  def _invalidate_attrs_for_var(self, var):
+    """Remove all cached attribute entries associated with a variable id."""
+    vid = getattr(var, "id", None)
+    if vid is None:
+      return
+    dead = [k for k in self._attr_table.keys() if k[0] == vid]
+    for k in dead:
+      self._attr_table.pop(k, None)
+
   @property
   def current_local_ops(self):
     return self.local_ops[self.frame.f_code.name]
@@ -945,12 +988,20 @@ class VirtualMachine:
       return self.load_from(state, self.frame.f_builtins, name)
 
   def load_constant(self, state, op, raw_const):
-    const = self.ctx.convert.constant_to_var(raw_const, node=state.node)
-    # if isinstance(raw_const, OrderedCode):
-    #   show_ordered_code(raw_const)
+    # const = self.ctx.convert.constant_to_var(raw_const, node=state.node)
+    # Fast-branch: keep only essential semantics; otherwise push Unknown but
+    # remember small literals to propagate through simple ops.
+    if isinstance(raw_const, OrderedCode):
+      const = self.ctx.convert.constant_to_var(raw_const, node=state.node)
+    elif raw_const is None:
+      const = self.ctx.convert.none.to_variable(state.node)
+      self._mark_known(const, None)
+    else:
+      const = self._mk_top(state.node)
+      self._try_mark_known_literal(const, raw_const)
     opcode_list.append({"filename": self.filename, "fullname": self.frame.f_code.qualname, "line": op.line, "offset": op.col, "opcode": "LOAD_CONST",
                         "value_id": f"v{const.id}", "value_data": const.data, "raw_const": raw_const})
-    self.trace_opcode(op, raw_const, const)
+    # self.trace_opcode(op, raw_const, const)
     return state.push(const)
 
   def _load_annotation(self, node, name, store):
@@ -1014,20 +1065,31 @@ class VirtualMachine:
     """Store 'value' under 'name'."""
     m_frame = self.frame
     assert m_frame is not None
+    # if local:
+    #   self.block_env.store_local(self.frame.current_block, name, value)
+    #   target = m_frame.f_locals
+    # else:
+    #   target = m_frame.f_globals
+    # node = self.ctx.attribute_handler.set_attribute(
+    #     state.node, target, name, value
+    # )
+    # if target is m_frame.f_globals and self.late_annotations:
+    #   # We sort the annotations so that a parameterized class's base class is
+    #   # resolved before the parameterized class itself.
+    #   for annot in sorted(self.late_annotations[name], key=lambda t: t.expr):
+    #     annot.resolve(node, m_frame.f_globals, m_frame.f_locals)
+    # return state.change_cfg_node(node)
+    # Choose target mapping and remember old binding to invalidate its attr cache.
+    target = m_frame.f_locals if local else m_frame.f_globals
+    old_var = target.members.get(name)
     if local:
       self.block_env.store_local(self.frame.current_block, name, value)
-      target = m_frame.f_locals
-    else:
-      target = m_frame.f_globals
-    node = self.ctx.attribute_handler.set_attribute(
-        state.node, target, name, value
-    )
-    if target is m_frame.f_globals and self.late_annotations:
-      # We sort the annotations so that a parameterized class's base class is
-      # resolved before the parameterized class itself.
-      for annot in sorted(self.late_annotations[name], key=lambda t: t.expr):
-        annot.resolve(node, m_frame.f_globals, m_frame.f_locals)
-    return state.change_cfg_node(node)
+    # Store cheaply (no attribute handler)
+    target.members[name] = value
+    # If this name was bound to a different variable before, drop its cached attrs.
+    if old_var is not None and old_var is not value:
+      self._invalidate_attrs_for_var(old_var)
+    return state
 
   def store_local(self, state, name, value):
     """Called when a local is written."""
@@ -1189,12 +1251,15 @@ class VirtualMachine:
     return state
 
   def load_attr(self, state, obj, attr):
-    """Try loading an attribute, and report errors."""
-    node, result, errors = self._retrieve_attr(state.node, obj, attr)
-    self._attribute_error_detection(state, attr, errors)
-    if result is None:
-      result = self.ctx.new_unsolvable(node)
-    return state.change_cfg_node(node), result
+    # """Try loading an attribute, and report errors."""
+    # node, result, errors = self._retrieve_attr(state.node, obj, attr)
+    # self._attribute_error_detection(state, attr, errors)
+    # if result is None:
+    #   result = self.ctx.new_unsolvable(node)
+    # return state.change_cfg_node(node), result
+    # Fast-branch: O(1) cache from previous STORE_ATTR; else Unknown.
+    val = self._attr_table.get((obj.id, attr))
+    return state, (val if val is not None else self._mk_top(state.node))
 
   def _attribute_error_detection(self, state, attr, errors):
     if not self.ctx.options.report_errors:
@@ -1269,9 +1334,11 @@ class VirtualMachine:
     return not has_any_none_origin
 
   def load_attr_noerror(self, state, obj, attr):
-    """Try loading an attribute, ignore errors."""
-    node, result, _ = self._retrieve_attr(state.node, obj, attr)
-    return state.change_cfg_node(node), result
+    # """Try loading an attribute, ignore errors."""
+    # node, result, _ = self._retrieve_attr(state.node, obj, attr)
+    # return state.change_cfg_node(node), result
+    val = self._attr_table.get((obj.id, attr))
+    return state, (val if val is not None else self._mk_top(state.node))
 
   def store_attr(
       self,
@@ -1280,29 +1347,36 @@ class VirtualMachine:
       attr: str,
       value: cfg.Variable,
   ) -> frame_state.FrameState:
-    """Set an attribute on an object."""
-    if not obj.bindings:
-      log.info("Ignoring setattr on %r", obj)
-      return state
-    nodes = []
-    for val in obj.Filter(state.node, strict=False):
-      # TODO(b/172045608): Check whether val.data is a descriptor (i.e. has
-      # "__set__")
-      nodes.append(
-          self.ctx.attribute_handler.set_attribute(
-              state.node, val.data, attr, value
-          )
-      )
-    if nodes:
-      return state.change_cfg_node(self.ctx.join_cfg_nodes(nodes))
-    else:
-      return state
+    # """Set an attribute on an object."""
+    # if not obj.bindings:
+    #   log.info("Ignoring setattr on %r", obj)
+    #   return state
+    # nodes = []
+    # for val in obj.Filter(state.node, strict=False):
+    #   # TODO(b/172045608): Check whether val.data is a descriptor (i.e. has
+    #   # "__set__")
+    #   nodes.append(
+    #       self.ctx.attribute_handler.set_attribute(
+    #           state.node, val.data, attr, value
+    #       )
+    #   )
+    # if nodes:
+    #   return state.change_cfg_node(self.ctx.join_cfg_nodes(nodes))
+    # else:
+    #   return state
+    """Fast branch: remember last explicit store for simple replay on LOAD_ATTR."""
+    # We don't try to split by bindings; just key by the variable object.
+    self._attr_table[(obj.id, attr)] = value
+    return state
 
   def del_attr(self, state, obj, attr):
-    """Delete an attribute."""
-    log.info(
-        "Attribute removal does not do anything in the abstract interpreter"
-    )
+    # """Delete an attribute."""
+    # log.info(
+    #     "Attribute removal does not do anything in the abstract interpreter"
+    # )
+    # return state
+    """Fast branch: invalidate cached value; no heavy semantics."""
+    self._attr_table.pop((obj.id, attr), None)
     return state
 
   def _handle_311_pattern_match_on_dict(self, state, op, obj, ret):
@@ -1710,26 +1784,36 @@ class VirtualMachine:
   def byte_LOAD_NAME(self, state, op):
     """Load a name. Can be a local, global, or builtin."""
     name = op.argval
-    try:
-      state, val = self.load_local(state, name)
-    except KeyError:
-      try:
-        state, val = self.load_global(state, name)
-      except KeyError as e:
-        try:
-          if self._is_private(name):
-            # Private names must be explicitly imported.
-            self.trace_opcode(op, name, None)
-            raise KeyError(name) from e
-          state, val = self.load_builtin(state, name)
-        except KeyError:
-          if self._is_private(name) or not self.has_unknown_wildcard_imports:
-            one_val = self._name_error_or_late_annotation(state, name)
-          else:
-            one_val = self.ctx.convert.unsolvable
-          self.trace_opcode(op, name, None)
-          return state.push(one_val.to_variable(state.node))
-    vm_utils.check_for_deleted(state, name, val, self.ctx)
+    # try:
+    #   state, val = self.load_local(state, name)
+    # except KeyError:
+    #   try:
+    #     state, val = self.load_global(state, name)
+    #   except KeyError as e:
+    #     try:
+    #       if self._is_private(name):
+    #         # Private names must be explicitly imported.
+    #         self.trace_opcode(op, name, None)
+    #         raise KeyError(name) from e
+    #       state, val = self.load_builtin(state, name)
+    #     except KeyError:
+    #       if self._is_private(name) or not self.has_unknown_wildcard_imports:
+    #         one_val = self._name_error_or_late_annotation(state, name)
+    #       else:
+    #         one_val = self.ctx.convert.unsolvable
+    #       self.trace_opcode(op, name, None)
+    #       return state.push(one_val.to_variable(state.node))
+    # vm_utils.check_for_deleted(state, name, val, self.ctx)
+    # Fast-branch: do not resolve/annotate/log errors; just fetch or Unknown.
+    store_locals = getattr(self.frame, "f_locals", None)
+    store_globals = getattr(self.frame, "f_globals", None)
+
+    if store_locals and name in store_locals.members:
+      val = store_locals.members[name]
+    elif store_globals and name in store_globals.members:
+      val = store_globals.members[name]
+    else:
+      val = self._mk_top(state.node)
     opcode_list.append({"filename": self.filename, "fullname": self.frame.f_code.qualname, "line": op.line, "offset": op.col, "opcode": "LOAD_NAME",
                         "value_id": f"v{val.id}", "value_data": val.data, "name": name})
     self.trace_opcode(op, name, val)
@@ -1770,17 +1854,30 @@ class VirtualMachine:
 
   def byte_LOAD_FAST(self, state, op):
     name = op.argval
-    return self._load_fast(state, op, name)
+    # return self._load_fast(state, op, name)
+    val = self.frame.f_locals.members.get(name, self._mk_top(state.node))
+    opcode_list.append(
+      {"filename": self.filename, "fullname": self.frame.f_code.qualname, "line": op.line, "offset": op.col,
+       "opcode": "LOAD_FAST", "value_id": f"v{val.id}", "value_data": val.data, "name": name})
+    self.trace_opcode(op, name, val)
+    return state.push(val)
 
   def byte_LOAD_FAST_CHECK(self, state, op):
-    name = op.argval
-    return self._load_fast(state, op, name)
+    # name = op.argval
+    # return self._load_fast(state, op, name)
+    return self.byte_LOAD_FAST(state, op)
 
   def byte_LOAD_FAST_AND_CLEAR(self, state, op):
     name = op.argval
-    state = self._load_fast(state, op, name, _UninitializedBehavior.PUSH_NULL)
+    # state = self._load_fast(state, op, name, _UninitializedBehavior.PUSH_NULL)
+    # null = abstract.Null(self.ctx).to_variable(state.node)
+    # return self._store_value(state, name, null, local=True)
+    val = self.frame.f_locals.members.get(name, abstract.Null(self.ctx).to_variable(state.node))
+    # push then clear
+    state = state.push(val)
     null = abstract.Null(self.ctx).to_variable(state.node)
-    return self._store_value(state, name, null, local=True)
+    self.frame.f_locals.members[name] = null
+    return state
 
   def byte_STORE_FAST(self, state, op):
     name = op.argval
@@ -1802,16 +1899,21 @@ class VirtualMachine:
       # variables. This workaround is safe because assigning to None is a
       # syntax error.
       return self.load_constant(state, op, None)
-    try:
-      state, val = self.load_global(state, name)
-    except KeyError:
-      try:
-        state, val = self.load_builtin(state, name)
-      except KeyError:
-        self.trace_opcode(op, name, None)
-        ret = self._name_error_or_late_annotation(state, name)
-        return state.push(ret.to_variable(state.node))
-    vm_utils.check_for_deleted(state, name, val, self.ctx)
+    # try:
+    #   state, val = self.load_global(state, name)
+    # except KeyError:
+    #   try:
+    #     state, val = self.load_builtin(state, name)
+    #   except KeyError:
+    #     self.trace_opcode(op, name, None)
+    #     ret = self._name_error_or_late_annotation(state, name)
+    #     return state.push(ret.to_variable(state.node))
+    # vm_utils.check_for_deleted(state, name, val, self.ctx)
+    # Fast-branch: globals lookup only; else Unknown.
+    if name in self.frame.f_globals.members:
+      val = self.frame.f_globals.members[name]
+    else:
+      val = self._mk_top(state.node)
     opcode_list.append({"filename": self.filename, "fullname": self.frame.f_code.qualname, "line": op.line, "offset": op.col, "opcode": "LOAD_GLOBAL",
                         "value_id": f"v{val.id}", "value_data": val.data, "name": name})
     self.trace_opcode(op, name, val)
